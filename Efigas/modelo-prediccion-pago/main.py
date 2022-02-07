@@ -60,7 +60,7 @@ dataset = raw_data.copy()
 
 # COMMAND ----------
 
-dataset.drop(['FechaEntrenamiento','FechaPrediccion','Producto'],axis=1,inplace=True)
+dataset.drop(['FechaEntrenamiento','FechaPrediccion','Producto','Cartera','DeudaCorrienteVencida'],axis=1,inplace=True)
 
 # COMMAND ----------
 
@@ -68,7 +68,7 @@ dataset.drop(['FechaEntrenamiento','FechaPrediccion','Producto'],axis=1,inplace=
 columns_to_float = ['EdadMora_30','EdadMora_60','EdadMora_90','Pago','Pago_Temprano']
 for c in columns_to_float :
     dataset[c] = dataset[c].astype(float)
-columns_to_str = ['Categoria','Refinanciado','EstadoFinanciero','EstadoProducto']
+columns_to_str = ['Categoria','Refinanciado','EstadoFinanciero','EstadoCorte','EstadoProducto','TipoProducto']
 for c in columns_to_str :
     dataset[c] = dataset[c].astype(str)
 
@@ -95,10 +95,15 @@ if is_training :
 
 # COMMAND ----------
 
-one_hot_columns = ['Categoria','Refinanciado','EstadoFinanciero','EstadoProducto']
+one_hot_columns = ['Categoria','TipoProducto','Refinanciado','EstadoFinanciero','EstadoCorte','EstadoProducto']
 if is_training :
   #One-hot enconding
-  categories = [[101,102,103,104,105,106,201,202], [1,0], [1,2,3,4], ['Activo','Suspendido','Retirado sin instalación','Retirado']]
+  categories = [[101,102,103,104,105,106,201,202],
+                [-1,3,6121,7014,7052,7053,7054,7055],
+                [1,0],
+                [1,2,3,4],
+                [-1,1,2,3,5,6,92,94,95,96,99,100,110,111,112,113],
+                ['Activo','Suspendido','Retirado sin instalación','Retirado']]
   encoder = OneHotEncoder(handle_unknown='ignore', sparse=False, categories=categories)
   X_encoded = pd.DataFrame(encoder.fit_transform(X[one_hot_columns]))
   X_encoded.columns = encoder.get_feature_names(one_hot_columns)
