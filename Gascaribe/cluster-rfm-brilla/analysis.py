@@ -3,11 +3,10 @@ import os
 import pandas as pd
 import numpy as np
 import seaborn as sns
+sns.set_theme(style="darkgrid")
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 from mpl_toolkits.mplot3d import Axes3D
-from sklearn.datasets import make_blobs
-from yellowbrick.cluster import KElbowVisualizer
 import time 
 from scipy import stats
 from scipy.stats import skew 
@@ -55,108 +54,133 @@ df = spark.read \
   .load()
 
 df = df.drop('Identificacion')
-dataset = df.toPandas()
-
-# COMMAND ----------
-
-dataset.shape
-dataset.head()
+raw_data = df.toPandas()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## EDA
+# MAGIC # EDA
+
+# COMMAND ----------
+
+dataset = raw_data.copy()
+
+# COMMAND ----------
+
+dataset
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Features Distribution
+# MAGIC ### Raw Data Distribution
 
 # COMMAND ----------
 
-sns.set_theme(style="darkgrid")
-fig, axs = plt.subplots(1,3,figsize=(15,5))
-axs[0].hist(dataset['Recency'],bins=50)
-axs[0].set_title('Recency')
-axs[1].hist(dataset['Frequency'],bins=50,color='red',alpha=0.6)
-axs[1].set_title('Frequency')
-axs[2].hist(dataset['Monetary'],bins=50,color='orange',alpha=0.6)
-axs[2].set_title('Monetary')
-fig.tight_layout()
+dataset.describe()
 
 # COMMAND ----------
 
-fig, axs = plt.subplots(3,1,figsize=(16,8))
-sns.boxplot(x='Recency',data=dataset,ax=axs[0])
-sns.boxplot(x='Frequency',data=dataset,ax=axs[1])
-sns.boxplot(x='Monetary',data=dataset,ax=axs[2])
-fig.tight_layout()
+def print_hist(data,special=""):
+    fig, axs = plt.subplots(1,3,figsize=(15,5))
+    col = ['Recency','Frequency','Monetary']
+    color = ['tab:blue','red','orange']
+    for i in range(3):
+        name = special+str(col[i])
+        axs[i].hist(data[name],bins=50,color=color[i])
+        axs[i].set_title(name)
+    fig.tight_layout()
+
+# COMMAND ----------
+
+print_hist(dataset,"")
+
+# COMMAND ----------
+
+def print_boxplot(data,special=""):
+    fig, axs = plt.subplots(3,1,figsize=(12,5))
+    col = ['Recency','Frequency','Monetary']
+    color = ['tab:blue','red','orange']
+    for i in range(3):
+        sns.boxplot(x=col[i],data=data,ax=axs[i],color=color[i])
+    fig.tight_layout()
+
+# COMMAND ----------
+
+print_boxplot(dataset,"")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Drop Outliers
+
+# COMMAND ----------
+
+def detect_outlier(data):
+    outliers = []
+    threshold= 3
+    mean = np.mean(data)
+    std =np.std(data)
+    return min([y for y in data if np.abs( (y-mean) / std ) > threshold], default=1e18)
+
+# COMMAND ----------
+
+outlier_limits = {c:detect_outlier(dataset[c]) for c in dataset.columns}
+print('Outliers Lower Limit')
+outlier_limits
+
+# COMMAND ----------
+
+dataset_outlier = dataset[(dataset['Recency']>=outlier_limits['Recency'])
+                        |(dataset['Frequency']>=outlier_limits['Frequency'])
+                        |(dataset['Monetary']>=outlier_limits['Monetary'])]
 
 # COMMAND ----------
 
 #Drop Outliers
-dataset.drop(dataset[dataset['Frequency'] > 10].index,inplace=True)
-dataset.drop(dataset[dataset['Monetary'] > 1.5e7].index,inplace=True)
-
-# COMMAND ----------
-
+dataset.drop(dataset_outlier.index,inplace=True)
 dataset.reset_index(inplace=True,drop=True)
 
 # COMMAND ----------
 
-dataset_org_feat = dataset.copy()
+# MAGIC %md
+# MAGIC ### Data distribution after dropping outliers
 
 # COMMAND ----------
 
-sns.set_theme(style="darkgrid")
-fig, axs = plt.subplots(3,1,figsize=(16,8))
-sns.boxplot(x='Recency',data=dataset,ax=axs[0])
-sns.boxplot(x='Frequency',data=dataset,ax=axs[1])
-sns.boxplot(x='Monetary',data=dataset,ax=axs[2])
-fig.tight_layout()
+print_hist(dataset,"")
 
 # COMMAND ----------
 
-fig, axs = plt.subplots(1,3,figsize=(15,5))
-axs[0].hist(dataset['Recency'],bins=50)
-axs[0].set_title('Recency')
-axs[1].hist(dataset['Frequency'],bins=50,color='red',alpha=0.6)
-axs[1].set_title('Frequency')
-axs[2].hist(dataset['Monetary'],bins=50,color='orange',alpha=0.6)
-axs[2].set_title('Monetary')
-fig.tight_layout()
+print_boxplot(dataset,"")
+
+# COMMAND ----------
+
+#dataset['Monetary'] = (dataset['Monetary'] / (5*1e5)).apply(np.ceil) * 5*1e5
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Features Correlation
+# MAGIC ### Correlation between variables
 
 # COMMAND ----------
 
-fig, axs = plt.subplots(3,3,figsize=(12,12))
-c = dataset.columns
-for i in range(3):
-    for j in range(3):
-        axs[i, j].plot(dataset[c[i]],dataset[c[j]],'x',alpha=0.6)
-        axs[i, j].set_xlabel(c[i])
-        axs[i, j].set_ylabel(c[j])
-fig.tight_layout()    
+correlation_matrix = dataset.corr()
+plt.figure(figsize=(8,8),facecolor='white')
+sns.heatmap(correlation_matrix,square=True,annot=True,cmap="RdYlGn")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Data Transformation
+# MAGIC ### Normalizing data
 
 # COMMAND ----------
 
-#Normalizing Features
-numerical_features = dataset.dtypes[dataset.dtypes != 'object'].index
-numerical = dataset[numerical_features]
-scaler = preprocessing.MinMaxScaler()
-d = scaler.fit_transform(numerical)
-scaled_df = pd.DataFrame(d, columns=numerical_features)
-for c in numerical_features :
-    dataset[c] = scaled_df[c]
+def normalize_data(data, columns):
+    scaler = preprocessing.MinMaxScaler()
+    d = scaler.fit_transform(data[columns])
+    scaled_df = pd.DataFrame(d, columns=columns)
+    for c in columns :
+        data['Norm'+c] = scaled_df[c]
 
 # COMMAND ----------
 
@@ -165,180 +189,199 @@ for c in numerical_features :
 
 # COMMAND ----------
 
-distortions = []
-inertias = []
-mapping1 = {}
-mapping2 = {}
-K = range(1, 10)
+def elbow_method(data, columns):
+    distortions = []
+    inertias = []
+    mapping1 = {}
+    mapping2 = {}
+    data_em = data[columns]
+    K = range(1, 10)
  
-for k in K:
-    # Building and fitting the model
-    kmeanModel = KMeans(n_clusters=k).fit(dataset)
-    kmeanModel.fit(dataset)
+    for k in K:
+        # Building and fitting the model
+        kmeanModel = KMeans(n_clusters=k).fit(data_em)
+        kmeanModel.fit(data_em)
+     
+        distortions.append(sum(np.min(cdist(data_em, kmeanModel.cluster_centers_,
+                                            'euclidean'), axis=1)) / data_em.shape[0])
+        inertias.append(kmeanModel.inertia_)
  
-    distortions.append(sum(np.min(cdist(dataset, kmeanModel.cluster_centers_,
-                                        'euclidean'), axis=1)) / dataset.shape[0])
-    inertias.append(kmeanModel.inertia_)
- 
-    mapping1[k] = sum(np.min(cdist(dataset, kmeanModel.cluster_centers_,
-                                   'euclidean'), axis=1)) / dataset.shape[0]
-    mapping2[k] = kmeanModel.inertia_
-
-# COMMAND ----------
-
-for key, val in mapping1.items():
-    print(f'{key} : {val}')
-
-# COMMAND ----------
-
-model = KMeans()
-visualizer = KElbowVisualizer(model, k=(0,12))
-visualizer.fit(dataset)
-visualizer.show() 
-
-# COMMAND ----------
-
-plt.plot(K, distortions, 'bx-')
-plt.xlabel('Values of K')
-plt.ylabel('Distortion')
-plt.title('The Elbow Method using Distortion')
-plt.show()
-
-# COMMAND ----------
-
-for key, val in mapping2.items():
-    print(f'{key} : {val}')
-
-# COMMAND ----------
-
-plt.plot(K, inertias, 'bx-')
-plt.xlabel('Values of K')
-plt.ylabel('Inertia')
-plt.title('The Elbow Method using Inertia')
-plt.show()
+        mapping1[k] = sum(np.min(cdist(data_em, kmeanModel.cluster_centers_,
+                                       'euclidean'), axis=1)) / data_em.shape[0]
+        mapping2[k] = kmeanModel.inertia_
+        
+    for key, val in mapping1.items():
+        print(f'{key} : {val}')
+        
+    plt.plot(K, distortions, 'bx-')
+    plt.xlabel('Values of K')
+    plt.ylabel('Distortion')
+    plt.title('The Elbow Method using Distortion')
+    plt.show()
+    
+    for key, val in mapping2.items():
+        print(f'{key} : {val}')
+    
+    plt.plot(K, inertias, 'bx-')
+    plt.xlabel('Values of K')
+    plt.ylabel('Inertia')
+    plt.title('The Elbow Method using Inertia')
+    plt.show()
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Modeling
+# MAGIC # KMeans
+
+# COMMAND ----------
+
+def kmeans_(data,n,col):
+    #initiliaze model
+    kmeans = KMeans(n_clusters=n,random_state=123,max_iter=800,n_init=30,algorithm='full')
+    #fitting
+    data['Cluster'] = kmeans.fit_predict(data[col])
+
+# COMMAND ----------
+
+def plot_2d(data,col):
+    fig, axs = plt.subplots(3,3,figsize=(12,12))
+    for i in range(3):
+        for j in range(3):
+            axs[i, j].scatter(data[col[i]],data[col[j]],c=data['Cluster'],cmap='viridis',s=5)
+            axs[i, j].set_xlabel(col[i])
+            axs[i, j].set_ylabel(col[j])
+    fig.tight_layout()  
+
+# COMMAND ----------
+
+def plot_3d(data,col):
+    fig = plt.figure(figsize=(15,8))
+    ax = fig.add_subplot(111, projection='3d') 
+    # plot points
+    ax.scatter(data[col[0]],
+                data[col[1]],
+                data[col[2]], 
+                c=data["Cluster"],
+                cmap='viridis',
+                s=5,
+                alpha=1)
+    ax.view_init()
+    plt.xlabel(col[0])
+    plt.ylabel(col[1])
+    ax.set_zlabel(col[2])
+    plt.show()
+
+# COMMAND ----------
+
+data_rfm = dataset.copy()
+
+# COMMAND ----------
+
+normalize_data(data_rfm,['Recency','Frequency','Monetary'])
+
+# COMMAND ----------
+
+elbow_method(data_rfm,['NormRecency','NormFrequency','NormMonetary'])
+
+# COMMAND ----------
+
+kmeans_(data_rfm,4,['NormRecency','NormFrequency','NormMonetary'])
+
+# COMMAND ----------
+
+rst = data_rfm.groupby('Cluster').agg({'Recency':['min','max','mean'],
+                                'Frequency':['min','max','mean'],
+                                'Monetary':['min','max','mean'],
+                                'NormRecency':['min','max'],
+                                'NormFrequency':['min','max'],
+                                'NormMonetary':['min','max','size']})
+rst
+
+# COMMAND ----------
+
+data_sample = data_rfm.sample(int(data_rfm.shape[0]*0.1))
+
+# COMMAND ----------
+
+plot_2d(data_sample,['Recency','Frequency','Monetary'])
+
+# COMMAND ----------
+
+plot_3d(data_sample,['Recency','Frequency','Monetary'])
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### KMeans - 5 Clusters
+# MAGIC # KMeans with Score
 
 # COMMAND ----------
 
-model = KMeans(n_clusters=5)
+data_rfm = dataset.copy()
 
 # COMMAND ----------
 
-fig, axs = plt.subplots(3,3,figsize=(12,12))
-c = dataset.columns
-for i in range(3):
-    for j in range(3):
-        axs[i, j].scatter(dataset_org_feat[c[i]],dataset_org_feat[c[j]],c=dataset_org_feat['label'],cmap='viridis')
-        axs[i, j].set_xlabel(c[i])
-        axs[i, j].set_ylabel(c[j])
-fig.tight_layout()  
+# data_drop_old = data_rfm[data_rfm['Recency'] >= 49]
+# data_rfm.drop(data_drop_old.index,inplace=True)
+# data_rfm.reset_index(inplace=True,drop=True)
 
 # COMMAND ----------
 
-dataset_org_feat.groupby('label').agg({"Recency":["min","max"], "Frequency":["min","max"], "Monetary": ["min","max"]})
+data_rfm['ScoreRecency'] = pd.cut(
+                            data_rfm['Recency'], 
+                            bins=[-1, 24, data_rfm['Recency'].max()],
+                            labels=[4, 1]).astype('int')
+    
+data_rfm['ScoreFrequency'] = pd.cut(
+                                data_rfm['Frequency'], 
+                                bins=[np.percentile(data_rfm['Frequency'],i) if (i != 0) else -1 for i in range(0,125,25)], 
+                                labels=[1, 2, 3, 4]).astype('int')
+    
+data_rfm['ScoreMonetary'] = pd.cut(
+                                data_rfm['Monetary'], 
+                                bins=[np.percentile(data_rfm['Monetary'],i) if (i != 0) else -1 for i in range(0,125,25)], 
+                                labels=[1, 2, 3, 4]).astype('int')
 
 # COMMAND ----------
 
-fig = plt.figure(figsize=(20,10))
-ax = fig.add_subplot(111, projection='3d') 
-ax.scatter(dataset_org_feat["Recency"],
-                dataset_org_feat["Monetary"],
-                dataset_org_feat["Frequency"], 
-                c=dataset_org_feat["label"],
-                cmap='viridis',
-                s=20,
-                alpha=0.6)
-plt.xlabel("Recency")
-plt.ylabel("Monetary")
-ax.set_zlabel("Frequency")
-plt.show()
+#Recency 
+print([-1, 24, data_rfm['Recency'].max()])
+    
+#Frequency
+print([np.percentile(data_rfm['Frequency'],i) if (i != 0) else -1 for i in range(0,125,25)])
+    
+#Monetary
+print([np.percentile(data_rfm['Monetary'],i) if (i != 0) else -1 for i in range(0,125,25)])
 
 # COMMAND ----------
 
-fig = plt.figure(figsize=(20,10))
-ax = fig.add_subplot(111, projection='3d') 
-ax.scatter(dataset_org_feat["Recency"],
-                dataset_org_feat["Monetary"],
-                dataset_org_feat["Frequency"], 
-                c=dataset_org_feat["label"],
-                cmap='viridis',
-                s=20,
-                alpha=0.6)
-ax.view_init(30, 185)
-plt.xlabel("Recency")
-plt.ylabel("Monetary")
-ax.set_zlabel("Frequency")
-plt.show()
+data_rfm.describe()
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### KMeans - 4 Clusters
+elbow_method(data_rfm,['ScoreRecency','ScoreFrequency','ScoreMonetary'])
 
 # COMMAND ----------
 
-dataset.drop(dataset_org_feat[dataset_org_feat['Recency'] > 730].index,inplace=True)
-dataset_org_feat.drop(dataset_org_feat[dataset_org_feat['Recency'] > 730].index,inplace=True)
+kmeans_(data_rfm,5,['ScoreRecency','ScoreFrequency','ScoreMonetary'])
 
 # COMMAND ----------
 
-model = KMeans(n_clusters=4)
-dataset['label'] = model.fit_predict(dataset)
-dataset_org_feat['label'] = dataset['label']
+rst = data_rfm.groupby('Cluster').agg({'Recency':['min','max','mean'],
+                                'Frequency':['min','max','mean'],
+                                'Monetary':['min','max','mean'],
+                                'ScoreRecency':['min','max'],
+                                'ScoreFrequency':['min','max'],
+                                'ScoreMonetary':['min','max','size']})
+rst
 
 # COMMAND ----------
 
-fig, axs = plt.subplots(3,3,figsize=(12,12))
-c = dataset.columns
-for i in range(3):
-    for j in range(3):
-        axs[i, j].scatter(dataset_org_feat[c[i]],dataset_org_feat[c[j]],c=dataset_org_feat['label'],cmap='viridis')
-        axs[i, j].set_xlabel(c[i])
-        axs[i, j].set_ylabel(c[j])
-fig.tight_layout()  
+data_sample = data_rfm.sample(int(data_rfm.shape[0]*0.1))
 
 # COMMAND ----------
 
-dataset_org_feat.groupby('label').agg({"Recency":["min","max"], "Frequency":["min","max"], "Monetary": ["min","max"]})
+plot_2d(data_sample,['Recency','Frequency','Monetary'])
 
 # COMMAND ----------
 
-fig = plt.figure(figsize=(20,10))
-ax = fig.add_subplot(111, projection='3d') 
-ax.scatter(dataset_org_feat["Recency"],
-                dataset_org_feat["Monetary"],
-                dataset_org_feat["Frequency"], 
-                c=dataset_org_feat["label"],
-                cmap='viridis',
-                s=20,
-                alpha=0.6)
-plt.xlabel("Recency")
-plt.ylabel("Monetary")
-ax.set_zlabel("Frequency")
-plt.show()
-
-# COMMAND ----------
-
-fig = plt.figure(figsize=(20,10))
-ax = fig.add_subplot(111, projection='3d') 
-ax.scatter(dataset_org_feat["Recency"],
-                dataset_org_feat["Monetary"],
-                dataset_org_feat["Frequency"], 
-                c=dataset_org_feat["label"],
-                cmap='viridis',
-                s=20,
-                alpha=0.6)
-ax.view_init(30, 185)
-plt.xlabel("Recency")
-plt.ylabel("Monetary")
-ax.set_zlabel("Frequency")
-plt.show()
+plot_3d(data_sample,['Recency','Frequency','Monetary'])
