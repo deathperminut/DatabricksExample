@@ -7,9 +7,6 @@ from imblearn.over_sampling import RandomOverSampler, SMOTE
 from imblearn.pipeline import Pipeline as imbpipeline
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType
 
-from sklearnex import patch_sklearn
-patch_sklearn()
-
 import sklearn
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 from sklearn import metrics
