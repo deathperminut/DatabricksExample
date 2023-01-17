@@ -148,39 +148,50 @@ def cupos(df):
         5: 5280000,
         6: 5280000
     }
+    
+    cupos_bi = {
+        1: 3800000,
+        2: 4000000,
+        3: 4500000,
+        4: 5000000,
+        5: 5500000,
+        6: 5700000,
+        7: 6000000
+    }
+    
     cupo = []
 
     for i in range(len(df)):
         if df['Nodo Combinado'].iloc[i] in [7, 16]:
             cupo.append(cupos_gdc[df['Estrato'].iloc[i]])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
-            cupo.append(4000000)
+            cupo.append(cupos_bi[2])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
-            cupo.append(5500000)
+            cupo.append(cupos_bi[5])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
-            cupo.append(5000000)
+            cupo.append(cupos_bi[4])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
-            cupo.append(5700000)
+            cupo.append(cupos_bi[6])
         elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [5, 6]):
-            cupo.append(5700000)
+            cupo.append(cupos_bi[6])
         elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [1, 2, 3, 4]):
-            cupo.append(6000000)
+            cupo.append(cupos_bi[7])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [14, 15]):
-            cupo.append(3800000)
+            cupo.append(cupos_bi[1])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13]):
-            cupo.append(4000000)
+            cupo.append(cupos_bi[2])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(4500000)
+            cupo.append(cupos_bi[3])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [14, 15]):
-            cupo.append(4000000)
+            cupo.append(cupos_bi[2])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13]):
-            cupo.append(4500000)
+            cupo.append(cupos_bi[3])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(5000000)
+            cupo.append(cupos_bi[4])
         elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
-            cupo.append(5700000)
+            cupo.append(cupos_bi[6])
         elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(6000000)
+            cupo.append(cupos_bi[7])
         else:
             cupo.append('missing')
 
