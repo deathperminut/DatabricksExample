@@ -91,4 +91,113 @@ plt.show()
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC 
+# MAGIC ### **Data Processing**
+
+# COMMAND ----------
+
+def modelo1(df):
+
+  df = df.copy()
+  df = df[df['Recency'] <= 49]
+  # Se itera por las columnas Recency y Monetary, y crea bins divididos en quantiles.
+  for cols in ['Recency','Monetary']:
+    df[f'{cols}_bins'] = pd.qcut(df[cols],5)
+    
+    sorted_bins = sorted(df[f'{cols}_bins'].value_counts().keys())
+    # Dependiendo de en cual intervalo (bin) se encuentra, lo clasifica de 5 a 1.
+    if cols == 'Recency':
+      r_score = []
+      for j in df[cols]:
+        counter = 5
+        for v in sorted_bins:
+          if j in v:
+            break
+          else:
+            counter -= 1
+        r_score.append(counter)
+    # Dependiendo de en cual intervalo (bin) se encuentra, lo clasifica de 1 a 5.
+    else:
+      r_score = []
+      for j in df[cols]:
+        counter = 0
+        for v in sorted_bins:
+          counter += 1
+          if j in v:
+            break
+        r_score.append(counter)
+        
+    df[f'{cols}-Score'] = r_score
+  # Esta clasificacion es manual, y se clasifica de 1 a 3.
+  freq_score = []
+  for i in df['Frequency']:
+    if i in [1,2,3]:
+      freq_score.append(i)
+    elif i in [4,5]:
+      freq_score.append(4)
+    elif i >= 6:
+      freq_score.append(5)
+      
+  df['Frequency-Score'] = freq_score
+
+  df = df.drop(['Recency_bins','Monetary_bins'],axis=1)
+    
+  return df
+
+# COMMAND ----------
+
+from mpl_toolkits.mplot3d import Axes3D
+
+
+def get_sample(df):
+
+    df['RFM'] = df[['Recency-Score','Frequency-Score','Monetary-Score']].astype(str).agg(''.join,axis=1)
+
+    X_new = []
+    for i in df['RFM'].unique():
+        X_new.append(df[df['RFM'] == i].head(1).index.values)
+
+    new_X = [int(str(x)[1:-1]) for x in X_new]
+
+    X = df.iloc[new_X]
+
+    return X
+
+def plot3d(X):
+  colors = ['#DF2020', '#81DF20', '#2095DF','#F4D03F']
+  kmeans = KMeans(n_clusters=4, random_state=0)
+  X['cluster'] = kmeans.fit_predict(X[['Recency-Score','Monetary-Score','Frequency-Score']])
+  X['c'] = X.cluster.map({0:colors[0], 1:colors[1], 2:colors[2],3:colors[3]})
+  fig = plt.figure(figsize=(40,10))
+  ax = fig.add_subplot(111, projection='3d')
+  ax.scatter(X['Recency-Score'], X['Monetary-Score'], X['Frequency-Score'], c=X.c, s=15)
+  ax.set_xlabel('Recency')
+  ax.set_ylabel('Monetary')
+  ax.set_zlabel('Frequency')
+  
+  #for angle in range(0,360):
+   # ax.view_init(30,angle)
+   # plt.draw()
+   # plt.pause(0.001)
+  plt.show()
+
+# COMMAND ----------
+
+rawData['Identificacion'] = rawData['Identificacion']
+print(df.head())
+#df = df[df['Recency'] <= 49]
+
+X = modelo1(rawData)
+
+#X = get_sample(X)
+
+plot3d(X)
+
+# COMMAND ----------
+
+X.groupby('cluster').agg({'Recency':['count','mean'],'Frequency':['mean'],'Monetary':['mean']})
+
+# COMMAND ----------
+
 
