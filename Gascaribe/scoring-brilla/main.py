@@ -214,22 +214,44 @@ fnbDF = pd.read_csv(
 
 # COMMAND ----------
 
+# Initialize IO variable to host CSV information
 output = io.StringIO()
 print('Modelo inicializado.')
+
+# COMMAND ----------
+
 fnbDF = preprocess_inputs(fnbDF)
 print('Datos procesados.')
+
+# COMMAND ----------
+
+# Run decision tree model
 fnbDF = arbol(fnbDF)
-print('Arbol de Decision terminado.')
+print('Nodos asignados.')
+
+# COMMAND ----------
+
+# Assign risk to each contract
 fnbDF = riesgo_total(fnbDF)
 print('Jerarquizacion de riesgos terminado.')
-fnbDF = nodos(fnbDF)
-print('Jerarquizacion de nodos terminado.')
+
+# COMMAND ----------
+
+# Assign quotas from model output
 fnbDF = cupos(fnbDF)
 print('Modelo terminado')
+
+# COMMAND ----------
+
+# Prepare data to write to CSV
 fnbDF = fnbDF[['Contrato','Nuevo Cupo', 'Nodo Combinado','Riesgo Combinado']]
 fnbDF.columns = ['contrato','cupo', 'nodo', 'riesgo']
 print('Data lista para escribir')
 
+# COMMAND ----------
+
+# Output to IO file
+# Write to blob
 fnbDF.to_csv(output, index=False)
 
 content = output.getvalue()
@@ -240,4 +262,3 @@ blob_block = ContainerClient.from_connection_string(
 )
 
 blob_block.upload_blob('results.csv', content, overwrite=True, encoding='utf-8')
-
