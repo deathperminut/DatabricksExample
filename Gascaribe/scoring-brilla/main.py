@@ -4,6 +4,10 @@ import numpy as np
 import os
 from azure.storage.blob import *
 import io
+from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
+from datetime import datetime, date
+from delta.tables import *
+from pyspark.sql.functions import *
 
 # COMMAND ----------
 
@@ -214,22 +218,113 @@ fnbDF = pd.read_csv(
 
 # COMMAND ----------
 
+# Initialize IO variable to host CSV information
 output = io.StringIO()
 print('Modelo inicializado.')
+
+# COMMAND ----------
+
 fnbDF = preprocess_inputs(fnbDF)
 print('Datos procesados.')
+
+# COMMAND ----------
+
+# Run decision tree model
 fnbDF = arbol(fnbDF)
-print('Arbol de Decision terminado.')
+print('Arbol terminado.')
+
+# COMMAND ----------
+
+# Assign risk to each contract
 fnbDF = riesgo_total(fnbDF)
 print('Jerarquizacion de riesgos terminado.')
+
+# COMMAND ----------
+
+# Run decision tree model
 fnbDF = nodos(fnbDF)
-print('Jerarquizacion de nodos terminado.')
+print('Nodos asignados.')
+
+# COMMAND ----------
+
+# Assign quotas from model output
 fnbDF = cupos(fnbDF)
-print('Modelo terminado')
-fnbDF = fnbDF[['Contrato','Nuevo Cupo', 'Nodo Combinado','Riesgo Combinado']]
+print('Cupos asignados')
+
+# COMMAND ----------
+
+schema = StructType([
+    StructField("IdContrato", IntegerType(), True),
+    StructField("CupoAsignado", IntegerType(), True),
+    StructField("Identificacion", StringType(), True),
+    StructField("Tipo", StringType(), True),
+    StructField("Nodo", IntegerType(), True),
+    StructField("Riesgo", StringType(), True),
+    StructField("Categoria", IntegerType(), True),
+    StructField("Estrato", IntegerType(), True),
+    StructField("FechaPrediccion", DateType(), True)
+    ])
+
+today = datetime.now()
+today_dt = today.strftime("%d-%m-%Y")
+
+fnbDF = fnbDF[['Contrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'Categoria','Estrato']]
+fnbDF['FechaPrediccion'] = today_dt
+fnbDF['FechaPrediccion'] = pd.to_datetime(fnbDF['FechaPrediccion'])
+
+deltaDF = spark.createDataFrame(fnbDF, schema = schema)
+
+# COMMAND ----------
+
+datalake = 'gdcbidatalake.dfs.core.windows.net'
+goldScoringFNB = 'abfss://gold@'+datalake+'/scoringFNB'
+
+deltaTableScoring = DeltaTable.forPath(spark, goldScoringFNB)
+
+deltaTableScoring.alias('scoring') \
+  .merge(
+    deltaDF.alias('updates'),
+    'scoring.IdContrato = updates.IdContrato AND scoring.FechaPrediccion = updates.FechaPrediccion'
+  ) \
+  .whenMatchedUpdate(set =
+    {
+      "IdContrato": "updates.IdContrato",
+      "CupoAsignado": "updates.CupoAsignado",
+      "Identificacion": "updates.Identificacion",
+      "Tipo": "updates.Tipo",
+      "Nodo": "updates.Nodo",
+      "Riesgo": "updates.Riesgo",
+      "Categoria": "updates.Categoria",
+      "Estrato": "updates.Estrato",
+      "FechaPrediccion": "updates.FechaPrediccion"
+    }
+  ) \
+  .whenNotMatchedInsert(values =
+    {
+      "IdContrato": "updates.IdContrato",
+      "CupoAsignado": "updates.CupoAsignado",
+      "Identificacion": "updates.Identificacion",
+      "Tipo": "updates.Tipo",
+      "Nodo": "updates.Nodo",
+      "Riesgo": "updates.Riesgo",
+      "Categoria": "updates.Categoria",
+      "Estrato": "updates.Estrato",
+      "FechaPrediccion": "updates.FechaPrediccion"
+    }
+  ) \
+  .execute()
+
+# COMMAND ----------
+
+# Prepare data to write to CSV
+fnbDF = fnbDF[['Contrato','Nuevo Cupo','Nodo Combinado','Riesgo Combinado']]
 fnbDF.columns = ['contrato','cupo', 'nodo', 'riesgo']
 print('Data lista para escribir')
 
+# COMMAND ----------
+
+# Output to IO file
+# Write to blob
 fnbDF.to_csv(output, index=False)
 
 content = output.getvalue()
@@ -240,4 +335,3 @@ blob_block = ContainerClient.from_connection_string(
 )
 
 blob_block.upload_blob('results.csv', content, overwrite=True, encoding='utf-8')
-
