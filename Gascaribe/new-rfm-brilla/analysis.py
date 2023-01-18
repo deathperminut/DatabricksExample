@@ -147,6 +147,25 @@ def modelo1(df):
 
 # COMMAND ----------
 
+def get_inactivos(df):
+    inactivos = df[df['Recency'] > 49]
+    
+    inactivos_df = pd.DataFrame({'Identificacion':inactivos['Identificacion'],
+                                 'Recency':inactivos['Recency'],
+                                 'Frequency':inactivos['Frequency'],
+                                 'Monetary':inactivos['Monetary'],
+                                'cluster':len(inactivos)*[-1],
+                                'name':len(inactivos)*['Inactivo']})
+    print(f'Numero de Usuarios Inactivos: {len(inactivos_df)}')
+    return inactivos_df
+
+# COMMAND ----------
+
+inactivos_df = get_inactivos(rawData)
+inactivos_df.head()
+
+# COMMAND ----------
+
 from mpl_toolkits.mplot3d import Axes3D
 
 
@@ -181,6 +200,7 @@ def plot3d(X):
    # plt.draw()
    # plt.pause(0.001)
   plt.show()
+  return kmeans
 
 # COMMAND ----------
 
@@ -192,11 +212,40 @@ X = modelo1(rawData)
 
 #X = get_sample(X)
 
-plot3d(X)
+kmeans = plot3d(X)
 
 # COMMAND ----------
 
-X.groupby('cluster').agg({'Recency':['count','mean'],'Frequency':['mean'],'Monetary':['mean']})
+centroids = kmeans.cluster_centers_
+clusters = pd.DataFrame(centroids, columns=['Recency-Score','Monetary-Score','Frequency-Score'])
+
+clusters['cluster'] = kmeans.predict(clusters[['Recency-Score','Monetary-Score','Frequency-Score']]) 
+clusters['magnitude'] = np.sqrt(((clusters['Recency-Score']**2) + (clusters['Monetary-Score']**2) + (clusters['Frequency-Score']**2)))
+clusters['name'] = [0,0,0,0]
+clusters['name'].iloc[clusters['magnitude'].idxmax()] = 'Diamante'
+clusters['name'].iloc[clusters['magnitude'].idxmin()] = 'Bronce'
+
+for i in range(len(clusters)):
+    if (clusters['Recency-Score'].iloc[i] > 3.5) and (clusters['Frequency-Score'].iloc[i] < 2.3) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].max()) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].min()):
+        clusters['name'].iloc[i] = 'Nuevo'
+    elif (clusters['Recency-Score'].iloc[i] < 3.5) and (clusters['Frequency-Score'].iloc[i] > 2.3) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].max()) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].min()):
+        clusters['name'].iloc[i] = 'Plata'
+    else:
+        pass
+      
+XMerged = X.merge(clusters[['cluster','name']],on='cluster',how='left')
+
+# COMMAND ----------
+
+XMerged
+
+# COMMAND ----------
+
+mergedX = pd.concat([XMerged[['Identificacion','Recency','Frequency','Monetary','cluster','name']],inactivos_df[['Identificacion','Recency','Frequency','Monetary','cluster','name']]],axis=0)
+
+# COMMAND ----------
+
+mergedX.groupby('name').agg({'Recency':['count','mean'],'Frequency':['mean'],'Monetary':['mean']})
 
 # COMMAND ----------
 
