@@ -6,6 +6,8 @@ from azure.storage.blob import *
 import io
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
 from datetime import datetime, date
+from delta.tables import *
+from pyspark.sql.functions import *
 
 # COMMAND ----------
 
@@ -266,37 +268,51 @@ schema = StructType([
 today = datetime.now()
 today_dt = today.strftime("%d-%m-%Y")
 
-scalaDF = fnbDF[['Contrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'Categoria','Estrato']]
-scalaDF['FechaPrediccion'] = today_dt
-scalaDF['FechaPrediccion'] = pd.to_datetime(scalaDF['FechaPrediccion'])
+fnbDF = fnbDF[['Contrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'Categoria','Estrato']]
+fnbDF['FechaPrediccion'] = today_dt
+fnbDF['FechaPrediccion'] = pd.to_datetime(fnbDF['FechaPrediccion'])
 
-df = spark.createDataFrame(scalaDF, schema = schema)
-
-# COMMAND ----------
-
-# MAGIC %scala
-# MAGIC val datalake = "gdcbidatalake.dfs.core.windows.net";
-# MAGIC 
-# MAGIC spark.conf.set(s"fs.azure.account.key.$datalake", dbutils.secrets.get(scope="gdcbi", key="datalakekey"));
-# MAGIC 
-# MAGIC val goldScoringFNB = s"delta.`abfss://gold@$datalake/scoringFNB`"
-# MAGIC spark.sql(s"""
-# MAGIC CREATE TABLE IF NOT EXISTS $goldScoringFNB ( 
-# MAGIC     IdContrato      BIGINT,
-# MAGIC     CupoAsignado    BIGINT,
-# MAGIC     Identificacion  VARCHAR(20),
-# MAGIC     Tipo            VARCHAR(20),
-# MAGIC     Nodo            INTEGER,
-# MAGIC     Riesgo          VARCHAR(20),
-# MAGIC     Categoria       INTEGER,
-# MAGIC     Estrato         INTEGER,
-# MAGIC     FechaPrediccion DATE
-# MAGIC     )
-# MAGIC """) 
+deltaDF = spark.createDataFrame(fnbDF, schema = schema)
 
 # COMMAND ----------
 
+datalake = 'gdcbidatalake.dfs.core.windows.net'
+goldScoringFNB = 'abfss://gold@'+datalake+'/scoringFNB'
 
+deltaTableScoring = DeltaTable.forPath(spark, goldScoringFNB)
+
+deltaTableScoring.alias('scoring') \
+  .merge(
+    deltaDF.alias('updates'),
+    'scoring.IdContrato = updates.IdContrato AND scoring.FechaPrediccion = updates.FechaPrediccion'
+  ) \
+  .whenMatchedUpdate(set =
+    {
+      "IdContrato": "updates.IdContrato",
+      "CupoAsignado": "updates.CupoAsignado",
+      "Identificacion": "updates.Identificacion",
+      "Tipo": "updates.Tipo",
+      "Nodo": "updates.Nodo",
+      "Riesgo": "updates.Riesgo",
+      "Categoria": "updates.Categoria",
+      "Estrato": "updates.Estrato",
+      "FechaPrediccion": "updates.FechaPrediccion"
+    }
+  ) \
+  .whenNotMatchedInsert(values =
+    {
+      "IdContrato": "updates.IdContrato",
+      "CupoAsignado": "updates.CupoAsignado",
+      "Identificacion": "updates.Identificacion",
+      "Tipo": "updates.Tipo",
+      "Nodo": "updates.Nodo",
+      "Riesgo": "updates.Riesgo",
+      "Categoria": "updates.Categoria",
+      "Estrato": "updates.Estrato",
+      "FechaPrediccion": "updates.FechaPrediccion"
+    }
+  ) \
+  .execute()
 
 # COMMAND ----------
 
