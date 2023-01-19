@@ -61,7 +61,7 @@ rawData = df.toPandas()
 
 # COMMAND ----------
 
-rawData
+rawData.shape
 
 # COMMAND ----------
 
