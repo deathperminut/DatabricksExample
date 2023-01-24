@@ -206,7 +206,7 @@ def cupos(df):
 
 # COMMAND ----------
 
-storageCS = os.environ.get("GDC_BA_STORAGE_CS")
+storageCS = os.environ.get("BA_STORAGE_CS")
 
 fnbDF = pd.read_csv(
                         f"abfs://brilla-scoring/rawdata.csv",
