@@ -23,18 +23,18 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-dwDatabase = os.environ.get("DWH_NAME_EFG")
-dwServer = os.environ.get("DWH_HOST_EFG")
-dwUser = os.environ.get("DWH_USER_EFG")
-dwPass = os.environ.get("DWH_PASS_EFG")
-dwJdbcPort = os.environ.get("DWH_PORT_EFG")
+dwDatabase = os.environ.get("DWH_NAME")
+dwServer = os.environ.get("DWH_HOST")
+dwUser = os.environ.get("DWH_USER")
+dwPass = os.environ.get("DWH_PASS")
+dwJdbcPort = os.environ.get("DWH_PORT")
 dwJdbcExtraOptions = ""
 sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = os.environ.get("BS_NAME_EFG")
-blob_container = os.environ.get("BS_CONTAINER_EFG")
+storage_account_name = os.environ.get("BS_NAME")
+blob_container = os.environ.get("BS_CONTAINER")
 blob_storage = storage_account_name + ".blob.core.windows.net"
 config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = os.environ.get("BS_ACCESS_KEY_EFG")
+blob_access_key = os.environ.get("BS_ACCESS_KEY")
 spark.conf.set(config_key, blob_access_key)
 #is_training = dbutils.widgets.get("is_training") == "true"
 
