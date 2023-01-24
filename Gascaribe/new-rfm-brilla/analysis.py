@@ -66,7 +66,7 @@ rawData.shape
 # COMMAND ----------
 
 sns.displot(rawData,x='Recency',aspect=20/8.27,kind='hist',bins=30,color='#EAAB00',fill=True)
-plt.axvline(x=48, color='r', linestyle='-',label='Linea de 48 meses')
+plt.axvline(x=48, color='r', linestyle='-',label='Linea de 48 meses, y division de usuarios activos con inactivos')
 plt.ticklabel_format(style='plain')
 plt.xticks(np.arange(0,max(rawData['Recency'])+1,10),rotation=45)
 plt.title('Distribucion de Recencias en Clientes Brilla')
@@ -83,7 +83,7 @@ plt.show()
 
 # COMMAND ----------
 
-sns.displot(rawData,x='Frequency',aspect=20/8.27,kind='hist',bins=30,color='#EAAB00',fill=True)
+sns.displot(rawData,x='Frequency',aspect=20/8.27,kind='hist',bins=30,color='#fa5d20',fill=True)
 plt.ticklabel_format(style='plain')
 plt.xticks(np.arange(0,max(rawData['Frequency'])+1,10),rotation=45)
 plt.title('Distribucion de Frecuencias en Clientes Brilla')
