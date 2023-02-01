@@ -180,15 +180,11 @@ def cupos(df):
             cupo.append(cupos_bi[7])
         elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [1, 2, 3, 4]):
             cupo.append(cupos_bi[7])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [14, 15]):
+        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
             cupo.append(cupos_bi[1])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13]):
-            cupo.append(cupos_bi[2])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(cupos_bi[3])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [14, 15]):
-            cupo.append(cupos_bi[3])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13]):
+            cupo.append(cupos_bi[2])
+        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
             cupo.append(cupos_bi[3])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
             cupo.append(cupos_bi[4])
