@@ -272,6 +272,28 @@ deltaDF = spark.createDataFrame(fnbDF, schema = schema)
 
 # COMMAND ----------
 
+# MAGIC %scala
+# MAGIC val datalake = "gdcbidatalake.dfs.core.windows.net";
+# MAGIC 
+# MAGIC spark.conf.set(s"fs.azure.account.key.$datalake", dbutils.secrets.get(scope="gdcbi", key="datalakekey"));
+# MAGIC 
+# MAGIC val goldScoringFNB = s"delta.`abfss://gold@$datalake/scoringFNB`"
+# MAGIC spark.sql(s"""
+# MAGIC CREATE TABLE IF NOT EXISTS $goldScoringFNB ( 
+# MAGIC     IdContrato      BIGINT,
+# MAGIC     CupoAsignado    BIGINT,
+# MAGIC     Identificacion  VARCHAR(20),
+# MAGIC     Tipo            VARCHAR(50),
+# MAGIC     Nodo            INTEGER,
+# MAGIC     Riesgo          VARCHAR(20),
+# MAGIC     Categoria       INTEGER,
+# MAGIC     Estrato         INTEGER,
+# MAGIC     FechaPrediccion DATE
+# MAGIC     )
+# MAGIC """) 
+
+# COMMAND ----------
+
 datalake = 'gdcbidatalake.dfs.core.windows.net'
 goldScoringFNB = 'abfss://gold@'+datalake+'/scoringFNB'
 
