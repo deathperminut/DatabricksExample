@@ -40,6 +40,12 @@ spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC 
+# MAGIC ### **Queries Aliados Activos**
+
+# COMMAND ----------
+
 queryCT = 'SELECT * FROM ModeloAliadosBrilla.BaseCT'
 queryGS = 'SELECT * FROM ModeloAliadosBrilla.BaseGS'
 queryMotos = 'SELECT * FROM ModeloAliadosBrilla.BaseMotos'
@@ -58,6 +64,7 @@ dfCT = spark.read \
 rawDataCT = dfCT.toPandas()
 
 rawDataCT = rawDataCT.drop(rawDataCT[rawDataCT['Aliado'] == 'CARDIF COLOMBIA SEGUROS GENERALES S.A.'].index,axis=0)
+rawDataCT['Monetario'] = rawDataCT['Monetario'].astype('float')
 
 dfGS = spark.read \
   .format("com.databricks.spark.sqldw") \
@@ -69,6 +76,7 @@ dfGS = spark.read \
   .load()
 
 rawDataGS = dfGS.toPandas()
+rawDataGS['Monetario'] = rawDataGS['Monetario'].astype('float')
 
 dfMotos = spark.read \
   .format("com.databricks.spark.sqldw") \
@@ -80,6 +88,128 @@ dfMotos = spark.read \
   .load()
 
 rawDataMotos = dfMotos.toPandas()
+rawDataMotos['Monetario'] = rawDataMotos['Monetario'].astype('float')
+
+# COMMAND ----------
+
+queryCTInactivo = """SELECT IdContratista
+                    FROM Brilla.DimAliado
+                    WHERE TipoContratista = 'CANAL TRADICIONAL'
+                    AND Valido = 1
+                    AND NombreContratista NOT IN ('ALMACEN MOTO CAMPO S.A.S',
+                                 'CLASSE MOTOS S.A.S.',
+                                 'EJE MOTOS S.A.S',
+                                 'GRUPO CREACTIVOS PUBLICIDAD SAS',
+                                 'GRUPO SUPER MOTOS S.A.S',
+                                 'GRUPO UMA S.A.S',
+                                 'IBIZA MOTOS SAS',
+                                 'KAWACALDAS',
+                                 'LOS OPTIMOTOS S.A.S',
+                                 'MAS MOTOS MAS REPUESTOS SAS',
+                                 'MOTO PREMIUM  DE OCCIDENTE SAS',
+                                 'MOTORED DE COLOMBIA  S.A.S',
+                                 'MOTOS DEL RUIZ S.A.S',
+                                 'MOTOS LA GRAN PARADA',
+                                 'MOTOS Y PARTES DE OCCIDENTE SAS',
+                                 'NOCUA MOTOS SAS',
+                                 'RIDERS MOTOS SAS',
+                                 'RUBE MOTOS SAS',
+                                 'SANTA CRUZ DISTRIBUCIONES S.A.S',
+                                 'SERVIMOTOS DE OCCIDENTE SAS',
+                                 'VERIFICARTE AAA S.A.S',
+                                 'YAMAHA DEL CAFÉ S.A.S',
+                                 'ZAGAMOTOS DEL PACIFICO S.A.S',
+                                 'CARDIF COLOMBIA SEGUROS GENERALES S.A.')
+                                 
+                   GROUP BY IdContratista"""
+
+queryMotosInactivo = """SELECT IdContratista
+                    FROM Brilla.DimAliado
+                    WHERE TipoContratista = 'CANAL TRADICIONAL'
+                    AND Valido = 1
+                    AND NombreContratista IN ('ALMACEN MOTO CAMPO S.A.S',
+                                 'CLASSE MOTOS S.A.S.',
+                                 'EJE MOTOS S.A.S',
+                                 'GRUPO CREACTIVOS PUBLICIDAD SAS',
+                                 'GRUPO SUPER MOTOS S.A.S',
+                                 'GRUPO UMA S.A.S',
+                                 'IBIZA MOTOS SAS',
+                                 'KAWACALDAS',
+                                 'LOS OPTIMOTOS S.A.S',
+                                 'MAS MOTOS MAS REPUESTOS SAS',
+                                 'MOTO PREMIUM  DE OCCIDENTE SAS',
+                                 'MOTORED DE COLOMBIA  S.A.S',
+                                 'MOTOS DEL RUIZ S.A.S',
+                                 'MOTOS LA GRAN PARADA',
+                                 'MOTOS Y PARTES DE OCCIDENTE SAS',
+                                 'NOCUA MOTOS SAS',
+                                 'RIDERS MOTOS SAS',
+                                 'RUBE MOTOS SAS',
+                                 'SANTA CRUZ DISTRIBUCIONES S.A.S',
+                                 'SERVIMOTOS DE OCCIDENTE SAS',
+                                 'VERIFICARTE AAA S.A.S',
+                                 'YAMAHA DEL CAFÉ S.A.S',
+                                 'ZAGAMOTOS DEL PACIFICO S.A.S')
+                                 
+                   GROUP BY IdContratista"""
+
+queryGSInactivo = """SELECT IdPuntoVenta
+                    FROM Brilla.DimAliado
+                    WHERE TipoContratista = 'GRANDE SUPERFICIE'
+                    AND Valido = 1
+                    GROUP BY IdPuntoVenta"""
+
+# COMMAND ----------
+
+dfCTInactivo = spark.read \
+  .format("com.databricks.spark.sqldw") \
+  .option("url", sqlDwUrl) \
+  .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
+  .option("forwardSparkAzureStorageCredentials", "true") \
+  .option("maxStrLength", "1024" ) \
+  .option("query", queryCTInactivo) \
+  .load()
+
+rawDataCTInactivo = dfCTInactivo.toPandas()
+
+
+dfGSInactivo = spark.read \
+  .format("com.databricks.spark.sqldw") \
+  .option("url", sqlDwUrl) \
+  .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
+  .option("forwardSparkAzureStorageCredentials", "true") \
+  .option("maxStrLength", "1024" ) \
+  .option("query", queryGSInactivo) \
+  .load()
+
+rawDataGSInactivo = dfGSInactivo.toPandas()
+
+
+dfMotosInactivo = spark.read \
+  .format("com.databricks.spark.sqldw") \
+  .option("url", sqlDwUrl) \
+  .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
+  .option("forwardSparkAzureStorageCredentials", "true") \
+  .option("maxStrLength", "1024" ) \
+  .option("query", queryMotosInactivo) \
+  .load()
+
+rawDataMotosInactivo = dfMotosInactivo.toPandas()
+
+# COMMAND ----------
+
+queryDimAliados = "SELECT IdContratista,IdPuntoVenta FROM Brilla.DimAliado WHERE Valido = 1 AND TipoContratista IN ('CANAL TRADICIONAL','GRANDE SUPERFICIE')"
+
+dfAliados = spark.read \
+  .format("com.databricks.spark.sqldw") \
+  .option("url", sqlDwUrl) \
+  .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
+  .option("forwardSparkAzureStorageCredentials", "true") \
+  .option("maxStrLength", "1024" ) \
+  .option("query", queryDimAliados) \
+  .load()
+
+dfAliados = dfAliados.toPandas()
 
 # COMMAND ----------
 
@@ -89,7 +219,7 @@ rawDataMotos = dfMotos.toPandas()
 # COMMAND ----------
 
 def preprocess_inputs(df):
-    df = df.copy()
+    df = df[df['Monetario'] > 100_000].copy()
     
     df['Devolucion'] = df['Devoluciones']/df['NumeroDeVentas']
 
@@ -148,6 +278,42 @@ XMotos = preprocess_inputs(rawDataMotos)
 
 # COMMAND ----------
 
+def get_na(df,tipoAliado):
+    inactivos = df[df['Monetario'] <= 100_000]
+    if tipoAliado == 'CT':
+        inactivos_df = pd.DataFrame({
+                                     'IdContratista':inactivos['IdContratista'],
+                                     'cluster':len(inactivos)*[-2],
+                                     'name':len(inactivos)*['No Aplica'],
+                                     'TipoDeAliado':len(inactivos)*[0], })
+        print(f'Numero de Usuarios con Colocacion <= $100,000: {len(inactivos_df)}')
+    elif tipoAliado == 'Motos':
+        inactivos_df = pd.DataFrame({
+                                     'IdContratista':inactivos['IdContratista'],
+                                     'cluster':len(inactivos)*[-2],
+                                     'name':len(inactivos)*['No Aplica'],
+                                     'TipoDeAliado':len(inactivos)*[1], })
+        print(f'Numero de Usuarios con Colocacion <= $100,000: {len(inactivos_df)}')
+    else:
+        inactivos_df = pd.DataFrame({
+                                     'IdPuntoVenta':inactivos['IdPuntoVenta'],
+                                     'cluster':len(inactivos)*[-2],
+                                     'name':len(inactivos)*['No Aplica'],
+                                     'TipoDeAliado':len(inactivos)*[2], })
+        print(f'Numero de Usuarios con Colocacion <= $100,000: {len(inactivos_df)}')
+    return inactivos_df
+
+# COMMAND ----------
+
+XCTNA = get_na(rawDataCT,'CT')
+XCTNA = XCTNA.merge(dfAliados, on='IdContratista', how='left')
+XGSNA = get_na(rawDataGS,'GS')
+XGSNA = XGSNA.merge(dfAliados, on='IdPuntoVenta', how='left')
+XMotosNA = get_na(rawDataMotos,'Motos')
+XMotosNA = XMotosNA.merge(dfAliados, on='IdContratista', how='left')
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### **Canal Tradicional**
 
@@ -198,7 +364,14 @@ XCTMerged = XCT.merge(clustersCT[['cluster','name']], on='cluster',how='left')
 
 XCTMerged['TipoDeAliado'] = 0
 
-XCTMerged = XCTMerged.rename(columns={'IdContratista':'Id'})
+#XCTMerged = XCTMerged.rename(columns={'IdContratista':'Id'})
+
+XCTMergedAliados = XCTMerged.merge(dfAliados, on='IdContratista', how='left')
+
+# COMMAND ----------
+
+print(f"Numero de datos repetidos: {XCTMergedAliados[['IdContratista','IdPuntoVenta']].duplicated().sum()}")
+display(XCTMergedAliados.head())
 
 # COMMAND ----------
 
@@ -255,7 +428,14 @@ XGSMerged = XGS.merge(clustersGS[['cluster','name']], on='cluster',how='left')
 
 XGSMerged['TipoDeAliado'] = 2
 
-XGSMerged = XGSMerged.rename(columns={'IdPuntoVenta':'Id'})
+#XGSMerged = XGSMerged.rename(columns={'IdPuntoVenta':'Id'})
+
+XGSMergedAliados = XGSMerged.merge(dfAliados, on='IdPuntoVenta', how='left')
+
+# COMMAND ----------
+
+print(f"Numero de datos repetidos: {XGSMergedAliados[['IdContratista','IdPuntoVenta']].duplicated().sum()}")
+display(XGSMergedAliados.head())
 
 # COMMAND ----------
 
@@ -308,11 +488,80 @@ XMotosMerged = XMotos.merge(clustersMotos[['cluster','name']], on='cluster',how=
 
 XMotosMerged['TipoDeAliado'] = 1
 
-XMotosMerged = XMotosMerged.rename(columns={'IdContratista':'Id'})
+#XMotosMerged = XMotosMerged.rename(columns={'IdContratista':'Id'})
+XMotosMergedAliados = XMotosMerged.merge(dfAliados, on='IdContratista', how='left')
 
 # COMMAND ----------
 
-results = pd.concat([XCTMerged[['Id','cluster','name','TipoDeAliado']],XMotosMerged[['Id','cluster','name','TipoDeAliado']],XGSMerged[['Id','cluster','name','TipoDeAliado']]],axis=0).reset_index(drop=True)
+print(f"Numero de datos repetidos: {XMotosMergedAliados[['IdContratista','IdPuntoVenta']].duplicated().sum()}")
+2
+display(XMotosMerged.head())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### **Inactivos**
+
+# COMMAND ----------
+
+idsActivosCT = XCT['IdContratista'].copy()
+idsActivosMotos = XMotos['IdContratista'].copy()
+idsActivosGS = XGS['IdPuntoVenta'].copy()
+idsNACT = XCTNA['IdContratista'].copy()
+idsNAMotos = XMotosNA['IdContratista'].copy()
+idsNAGS = XGSNA['IdPuntoVenta'].copy()
+
+idsInactivosCT = list(set(rawDataCTInactivo['IdContratista']) - set(idsActivosCT) - set(idsNACT))
+idsInactivosGS = list(set(rawDataGSInactivo['IdPuntoVenta']) - set(idsActivosGS) - set(idsNAGS))
+idsInactivosMotos = list(set(rawDataMotosInactivo['IdContratista']) - set(idsActivosMotos) - set(idsNAMotos))
+
+InactivosCT = pd.DataFrame(idsInactivosCT,columns=['IdContratista'])
+InactivosCT = InactivosCT.merge(dfAliados, on='IdContratista', how='left')
+InactivosGS = pd.DataFrame(idsInactivosGS,columns=['IdPuntoVenta'])
+InactivosMotos = pd.DataFrame(idsInactivosMotos,columns=['IdContratista'])
+InactivosMotos = InactivosMotos.merge(dfAliados, on='IdContratista', how='left')
+
+# COMMAND ----------
+
+def process_inactivos(df,tipoAliado):
+    
+    df['cluster'] = -1
+    df['name'] = 'Inactivo'
+    
+    if tipoAliado == 'CT':
+        df['TipoDeAliado'] = 0
+        #df = df.rename(columns={'IdContratista':'Id'})
+    
+    elif tipoAliado == 'Motos':
+        df['TipoDeAliado'] = 1
+        #df = df.rename(columns={'IdContratista':'Id'})
+    
+    else:
+        df['TipoDeAliado'] = 2
+        #df = df.rename(columns={'IdPuntoVenta':'Id'})
+    
+    
+    return df
+
+# COMMAND ----------
+
+resultCTInactivo = process_inactivos(InactivosCT,'CT')
+resultGSInactivo = process_inactivos(InactivosGS,'GS')
+resultGSInactivo = resultGSInactivo.merge(dfAliados, on='IdPuntoVenta', how='left')
+resultMotosInactivo = process_inactivos(InactivosMotos,'Motos')
+
+# COMMAND ----------
+
+results = pd.concat([XCTMergedAliados[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     XMotosMergedAliados[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     XGSMergedAliados[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     resultCTInactivo[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     resultMotosInactivo[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     resultGSInactivo[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     XCTNA[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     XMotosNA[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']],\
+                     XGSNA[['IdContratista','IdPuntoVenta','cluster','name','TipoDeAliado']]],axis=0).reset_index(drop=True)
 results = results.rename(columns={'cluster':'Segmento',
                                   'name': 'NombreSegmento'})
 
@@ -321,12 +570,17 @@ results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
 
 # COMMAND ----------
 
+print(f"Numero de datos repetidos: {results[['IdContratista','IdPuntoVenta']].duplicated().sum()}")
+
+# COMMAND ----------
+
 results
 
 # COMMAND ----------
 
 schema = StructType([
-    StructField("Id", IntegerType(), True),
+    StructField("IdContratista", IntegerType(), True),
+    StructField("IdPuntoVenta", IntegerType(), True),
     StructField("Segmento", IntegerType(), True),
     StructField("NombreSegmento", StringType(), True),
     StructField("TipoDeAliado", IntegerType(), True),
