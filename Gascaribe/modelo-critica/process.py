@@ -5,7 +5,7 @@ import numpy as np
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
 from datetime import date,datetime
 today = datetime.now()
-today_dt = today.strftime("%d-%m-%Y")
+today_dt = today.strftime("%Y-%m-%d")
 
 # COMMAND ----------
 
@@ -131,15 +131,20 @@ rawdata['Regla 0']=rawdata[['UltimaLecturaValida','ValorLecturaValido0','Lectura
 
 #Primero verificaremos que exista una orden existosa que pueda justificar el consumo
 
-rawdata['Regla1.1'] = rawdata[['IdTipoTrabajo', 'IdClaseCausal','UltimaCausal']].apply(lambda x: 'SI' if x[0] in (12620,12526,10546,12521,12137,12190,12187,12690,12527,10559) and x[2] not in (3194,3756,3757,3766,3767,3768,9537,9645,9652,9665,9928,3761,3755)   else 'NO', axis=1)
+rawdata['Regla1.1'] = rawdata[['IdTipoTrabajo', 'IdClaseCausal','UltimaCausal']].apply(lambda x: 'SI' if x[0] in (12620,12526,10546,12521,12137,12190,12187,12690,12527,10559) and x[2]  in (3756,3757,3766,3767,3768,9537,9645,9652,9665,9928,3761,3755)   else 'NO', axis=1)
 rawdata['Regla1.3']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura']].apply(lambda x: 'NO' if x[1]=='01-01-1900' 
                                                                                                             else 'SI' if (x[0]<x[1] and x[3]<=x[2]) or (x[0]>x[1] and x[3]>=x[2])
                                                                                                             else 'NO',axis=1 )
-rawdata['Regla 1'] = rawdata[['Regla1.1','Regla1.3','Regla 0','LecturaUltimaOrden','LecturaDosMeses']].apply(lambda x: 'NO' if x[3]==-10 else
+rawdata['Regla1.2']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura','UltimaLecturaValida','FechaUltimaLecturaValida']].apply(lambda x: 'NO' if x[1]=='01-01-1900' 
+                                                                                                            else 'SI' if ((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
+                                                                                                            else 'NO',axis=1 )
+
+rawdata['Regla 1'] = rawdata[['Regla1.1','Regla1.3','Regla 0','LecturaUltimaOrden','LecturaDosMeses','Regla1.2']].apply(lambda x: 'NO' if x[3]==-10 else
 'NO' if x[4]>x[3] else
-'Yes' if x[2]==1 and (x[0]=='SI' and x[1]=='SI' ) else 'NO',axis=1)
+'Yes' if x[2]==1 and (x[0]=='SI' and x[1]=='SI' and x[5]=='SI' ) else 'NO',axis=1)
 rawdata.pop('Regla1.1')
 rawdata.pop('Regla1.3')
+rawdata.pop('Regla1.2')
 #modificar regla 1. Para empezar el campo de lectura de la orden debe no ser nulo. En caso dado sea nulo, verificar que en al menos una de las ordenes asignadas dentro del periodo de consumo exista la campo de lectura y tomar esa orden.
 #lo segundo que tengas las causales indicadas a los tt indicados ES UN Y
 # dejar de verificar los comentarios 
