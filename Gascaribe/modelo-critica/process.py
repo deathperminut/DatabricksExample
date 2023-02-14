@@ -61,6 +61,7 @@ rawdata['ValorLecturaAnterior'].fillna('-1000.0',inplace=True)
 rawdata['LecturaDosMeses'].fillna('-1000.0',inplace=True)
 rawdata['ConsumoPromedioProducto'].fillna('0.0',inplace=True)
 rawdata['ComentarioOrden'].fillna(' ',inplace=True)
+rawdata['FechaUltimaLecturaValida'].fillna('1900-01-01',inplace=True)
 
 # COMMAND ----------
 
@@ -135,8 +136,8 @@ rawdata['Regla1.1'] = rawdata[['IdTipoTrabajo', 'IdClaseCausal','UltimaCausal']]
 rawdata['Regla1.3']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura']].apply(lambda x: 'NO' if x[1]=='01-01-1900' 
                                                                                                             else 'SI' if (x[0]<x[1] and x[3]<=x[2]) or (x[0]>x[1] and x[3]>=x[2])
                                                                                                             else 'NO',axis=1 )
-rawdata['Regla1.2']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura','UltimaLecturaValida','FechaUltimaLecturaValida']].apply(lambda x: 'NO' if x[1]=='01-01-1900' 
-                                                                                                            else 'SI' if ((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
+rawdata['Regla1.2']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura','UltimaLecturaValida','FechaUltimaLecturaValida']].apply(lambda x: 'NO' if x[1]=='01-01-1900' or x[5]=='1900-01-01'
+                                                                                                            else 'SI' if x[1]>x[5] and x[0]>x[5] and ((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
                                                                                                             else 'NO',axis=1 )
 
 rawdata['Regla 1'] = rawdata[['Regla1.1','Regla1.3','Regla 0','LecturaUltimaOrden','LecturaDosMeses','Regla1.2']].apply(lambda x: 'NO' if x[3]==-10 else
