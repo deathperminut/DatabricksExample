@@ -56,6 +56,23 @@ df = dfSpark.toPandas()
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC 
+# MAGIC ### **Remove inactive products**
+
+# COMMAND ----------
+
+df = df[df['Facturacion'] != 0].reset_index(drop=True)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC 
+# MAGIC ### **Processing**
+
+# COMMAND ----------
+
 def normVariable(value,maxValue,minValue):
     
     normValue = (float(value) - minValue)/(maxValue - minValue)
@@ -92,20 +109,38 @@ df['VarRefinanciaciones'] = df['Refinanciaciones'].apply(lambda x: 1 - normVaria
 
 maxValue = df['Suspensiones'].max()
 minValue = df['Suspensiones'].min()
-df['VarSuspensiones'] = df['Suspensiones'].apply(lambda x: 1 - normVariable(x,maxValue,minValue))
+varSuspensiones = []
+for i in range(len(df['Suspensiones'])):
+    if df['IdTipoProducto'][i] == 7055:
+        varSuspensiones.append(None)
+    else:
+        varSuspensiones.append(normVariable(df['Suspensiones'][i],maxValue,minValue))
+
+df['varSuspensiones'] = varSuspensiones
 
 # COMMAND ----------
 
-xPago = 0.25
-xMora = 0.25
-xRefinanciaciones = 0.25
-xSuspensiones = 0.25
+ponderado = []
+for i in range(len(df)):
+    if df['IdTipoProducto'][i] == 7014:
+        xPago = 0.25
+        xMora = 0.25
+        xRefinanciaciones = 0.25
+        xSuspensiones = 0.25
 
-df['Ponderado'] = (xPago*df['VarPago'] + xMora*df['VarMora'] + xRefinanciaciones*df['VarRefinanciaciones'] + xSuspensiones*df['VarSuspensiones'])
+        ponderado.append(xPago*df['VarPago'][i] + xMora*df['VarMora'][i] + xRefinanciaciones*df['VarRefinanciaciones'][i] + xSuspensiones*df['varSuspensiones'][i])
+    else:
+        xPago = 0.34
+        xMora = 0.33
+        xRefinanciaciones = 0.33
+
+        ponderado.append(xPago*df['VarPago'][i] + xMora*df['VarMora'][i] + xRefinanciaciones*df['VarRefinanciaciones'][i])
+        
+df['Ponderado'] = ponderado
 
 # COMMAND ----------
 
- df.head()
+df.head()
 
 # COMMAND ----------
 
@@ -115,7 +150,7 @@ df['Ponderado'] = (xPago*df['VarPago'] + xMora*df['VarMora'] + xRefinanciaciones
 
 # COMMAND ----------
 
-results = df[['IdTipoProducto','IdProducto','VarPago','VarMora','VarRefinanciaciones','VarSuspensiones','Ponderado']]
+results = df[['IdTipoProducto','IdProducto','Intervalo','VarPago','VarMora','VarRefinanciaciones','varSuspensiones','Ponderado']]
 results['FechaPrediccion'] = today_dt
 results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
 #results['Valido'] = 1
@@ -134,6 +169,7 @@ results.head()
 schema = StructType([
     StructField("IdTipoProducto", IntegerType(), True),
     StructField("IdProducto", IntegerType(), True),
+    StructField("Intervalo", IntegerType(), True),  
     StructField("PagosFacturacion", FloatType(), True),
     StructField("MorasEscaladas", FloatType(), True),
     StructField("RefinanciacionesEscaladas", FloatType(), True),
