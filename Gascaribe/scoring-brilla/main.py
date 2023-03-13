@@ -170,7 +170,11 @@ def cupos(df):
             cupo.append(cupos_gdc[df['Estrato'].iloc[i]])
         elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
             cupo.append(cupos_bi[2])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
+        elif (df['Estrato'].iloc[i] == 1) and (df['Nodo Combinado'].iloc[i] == 1):
+            cupo.append(cupos_bi[4])
+        elif (df['Estrato'].iloc[i] == 1) and (df['Nodo Combinado'].iloc[i] == 2):
+            cupo.append(cupos_bi[3])
+        elif (df['Estrato'].iloc[i] in [2, 3]) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
             cupo.append(cupos_bi[5])
         elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
             cupo.append(cupos_bi[4])
