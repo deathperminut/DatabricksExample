@@ -276,7 +276,7 @@ deltaDF = spark.createDataFrame(fnbDF, schema = schema)
 
 # COMMAND ----------
 
-deltaTableScoring = DeltaTable.forName('analiticagdc.brilla.scoringFNB')
+deltaTableScoring = DeltaTable.forName(spark, 'analiticagdc.brilla.scoringFNB')
 
 deltaTableScoring.alias('scoring') \
   .merge(
