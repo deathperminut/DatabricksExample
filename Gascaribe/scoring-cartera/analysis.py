@@ -10,6 +10,12 @@ from datetime import date,datetime
 today = datetime.now()
 today_dt = today.strftime("%d-%m-%Y")
 
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
+
+from scipy.spatial.distance import cdist
+
 import warnings
 warnings.filterwarnings('ignore')
 #%matplotlib inline
@@ -56,6 +62,10 @@ df = dfSpark.toPandas()
 
 # COMMAND ----------
 
+df.head()
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC 
 # MAGIC ### **Remove inactive products**
@@ -88,7 +98,7 @@ df['InP'] = df['Pagos'].apply(lambda x: 1 if x > quantileValue else normVariable
 
 # COMMAND ----------
 
-A = 0.75
+A = 1
 
 df['VarPago'] = A*(df['Pagos']/df['Facturacion']) + (1 - A)*df['InP']
 df['VarPago'] = df['VarPago'].apply(lambda x: 1 if x > 1 else x)
@@ -107,40 +117,115 @@ df['VarRefinanciaciones'] = df['Refinanciaciones'].apply(lambda x: 1 - normVaria
 
 # COMMAND ----------
 
-maxValue = df['Suspensiones'].max()
-minValue = df['Suspensiones'].min()
-varSuspensiones = []
-for i in range(len(df['Suspensiones'])):
-    if df['IdTipoProducto'][i] == 7055:
-        varSuspensiones.append(None)
-    else:
-        varSuspensiones.append(normVariable(df['Suspensiones'][i],maxValue,minValue))
+suspensiones = {
+    6:183,
+    12:366,
+    24:731
+}
 
-df['varSuspensiones'] = varSuspensiones
+for i in range(len(df)):
+    for intervalo,suspensionMax in suspensiones.items():
+        if df['Intervalo'][i] == intervalo and df['DiasSuspendidos'][i] > suspensionMax:
+            df['DiasSuspendidos'][i] = suspensionMax
+        else:
+            pass
+
+# COMMAND ----------
+
+df6 = df[df['Intervalo'] == 6].reset_index(drop=True)
+df12 = df[df['Intervalo'] == 12].reset_index(drop=True)
+df24 = df[df['Intervalo'] == 24].reset_index(drop=True)
+
+fulldfs = [df6,df12,df24]
+
+for dfi in fulldfs:
+    maxValue = dfi['DiasSuspendidos'].max()
+    minValue = dfi['DiasSuspendidos'].min()
+    varSuspensiones = []
+    for i in range(len(dfi['DiasSuspendidos'])):
+        if dfi['IdTipoProducto'][i] == 7055:
+            varSuspensiones.append(None)
+        else:
+            varSuspensiones.append(1 - normVariable(dfi['DiasSuspendidos'][i],maxValue,minValue))
+
+    dfi['varSuspensiones'] = varSuspensiones
+    
+    maxCastigo = dfi['ConteoCastigado'].max()
+    varCastigo = []
+    for i in range(len(dfi['ConteoCastigado'])):
+        varCastigo.append(dfi['ConteoCastigado'][i]/maxCastigo)
+    
+    dfi['varCastigo'] = varCastigo
+        
+    
+newdf = pd.concat([df6,df12,df24],axis=0).reset_index(drop=True)
 
 # COMMAND ----------
 
 ponderado = []
-for i in range(len(df)):
-    if df['IdTipoProducto'][i] == 7014:
-        xPago = 0.25
-        xMora = 0.25
+for i in range(len(newdf)):
+    if newdf['IdTipoProducto'][i] == 7014:
+        xPago = 0.15
+        xMora = 0.35
         xRefinanciaciones = 0.25
         xSuspensiones = 0.25
 
-        ponderado.append(xPago*df['VarPago'][i] + xMora*df['VarMora'][i] + xRefinanciaciones*df['VarRefinanciaciones'][i] + xSuspensiones*df['varSuspensiones'][i])
+        score = (xPago*newdf['VarPago'][i] + xMora*newdf['VarMora'][i] + xRefinanciaciones*newdf['VarRefinanciaciones'][i] + xSuspensiones*newdf['varSuspensiones'][i])*(1 - newdf['varCastigo'][i])
+        
+        if score < 0:
+            score = 0
+        else:
+            pass
+
+        ponderado.append(score)
+        
     else:
-        xPago = 0.34
-        xMora = 0.33
+        xPago = 0.14
+        xMora = 0.53
         xRefinanciaciones = 0.33
 
-        ponderado.append(xPago*df['VarPago'][i] + xMora*df['VarMora'][i] + xRefinanciaciones*df['VarRefinanciaciones'][i])
+        score = (xPago*newdf['VarPago'][i] + xMora*newdf['VarMora'][i] + xRefinanciaciones*newdf['VarRefinanciaciones'][i])*(1 - newdf['varCastigo'][i])
         
-df['Ponderado'] = ponderado
+        if score < 0:
+            score = 0
+        else:
+            pass
+
+        ponderado.append(score)
+        
+        
+newdf['Ponderado'] = ponderado
 
 # COMMAND ----------
 
-df.head()
+df = newdf.copy()
+
+# COMMAND ----------
+
+cluster = []
+for i in range(len(df)):
+    if df['Ponderado'][i] <= 0.55 or df['Castigado'][i] == 1:
+        cluster.append(0)
+    elif df['Ponderado'][i] > 0.55 and df['Ponderado'][i] <= 0.7:
+        cluster.append(1)
+    elif df['Ponderado'][i] > 0.7 and df['Ponderado'][i] <= 0.85:
+        cluster.append(2)
+    elif df['Ponderado'][i] > 0.85 and df['Ponderado'][i] < 1:
+        cluster.append(3)
+    elif df['Ponderado'][i] == 1:
+        cluster.append(4)
+
+df['Segmento'] = cluster
+
+# COMMAND ----------
+
+df['SegmentoNombre'] = df['Segmento'].replace({
+    0:'Pesimo',
+    1:'Malo',
+    2:'Regular',
+    3:'Bueno',
+    4:'Excelente'
+})
 
 # COMMAND ----------
 
@@ -150,7 +235,11 @@ df.head()
 
 # COMMAND ----------
 
-results = df[['IdTipoProducto','IdProducto','Intervalo','VarPago','VarMora','VarRefinanciaciones','varSuspensiones','Ponderado']]
+df.head()
+
+# COMMAND ----------
+
+results = df[['IdTipoProducto','IdProducto','Intervalo','VarPago','VarMora','VarRefinanciaciones','varSuspensiones','DiasSuspendidos','Castigado','ConteoCastigado','Ponderado','Segmento','SegmentoNombre']]
 results['FechaPrediccion'] = today_dt
 results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
 #results['Valido'] = 1
@@ -174,7 +263,12 @@ schema = StructType([
     StructField("MorasEscaladas", FloatType(), True),
     StructField("RefinanciacionesEscaladas", FloatType(), True),
     StructField("SuspensionesEscaladas", FloatType(), True),
+    StructField("DiasSuspendidos", IntegerType(), True),
+    StructField("Castigado", IntegerType(), True),
+    StructField("ConteoCastigado", IntegerType(), True),
     StructField("Ponderado", FloatType(), True),
+    StructField("Segmento", IntegerType(), True),
+    StructField("SegmentoNombre", StringType(), True),
     StructField("FechaPrediccion", DateType(), True)
     ])
 df = spark.createDataFrame(results, schema = schema)
