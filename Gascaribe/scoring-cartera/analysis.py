@@ -6,6 +6,8 @@ import pickle as pkl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
+from delta.tables import *
+from pyspark.sql.functions import *
 from datetime import date,datetime
 today = datetime.now()
 today_dt = today.strftime("%d-%m-%Y")
@@ -271,7 +273,9 @@ schema = StructType([
     StructField("SegmentoNombre", StringType(), True),
     StructField("FechaPrediccion", DateType(), True)
     ])
+
 df = spark.createDataFrame(results, schema = schema)
+
 df.write \
 .format("com.databricks.spark.sqldw") \
 .option("url", sqlDwUrl) \
@@ -283,4 +287,8 @@ df.write \
 
 # COMMAND ----------
 
+df.write.mode('overwrite').saveAsTable('analiticagdc.scoringcartera.factscoring')
 
+# COMMAND ----------
+
+df.write.mode('append').saveAsTable('analiticagdc.scoringcartera.factscoring_historia')
