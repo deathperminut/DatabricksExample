@@ -125,8 +125,12 @@ rawdata['LecturaUltimaOrden']=rawdata['LecturaUltimaOrden'].astype('float')
 
 # COMMAND ----------
 
-rawdata['Regla 0']=rawdata[['UltimaLecturaValida','ValorLecturaValido0','LecturaDosMeses',]].apply(lambda x: 0 if x[0]==-10 else
+rawdata['Regla 0']=rawdata[['UltimaLecturaValida','ValorLecturaValido0','LecturaDosMeses']].apply(lambda x: 0 if x[0]==-10 else
                                                                                         1 if x[0]<=x[1] else 0,axis=1)
+
+# COMMAND ----------
+
+rawdata['Regla -1'] = raw[['DiferenciaPromedioPeriodo','RI','RS']].apply(lambda x : 0 if x[0]>x[2] or x[0]<x[1] else 1,axis=1)
 
 # COMMAND ----------
 
@@ -137,7 +141,7 @@ rawdata['Regla1.3']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden
                                                                                                             else 'SI' if (x[0]<x[1] and x[3]<=x[2]) or (x[0]>x[1] and x[3]>=x[2])
                                                                                                             else 'NO',axis=1 )
 rawdata['Regla1.2']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura','UltimaLecturaValida','FechaUltimaLecturaValida']].apply(lambda x: 'NO' if x[1]=='01-01-1900' or x[5]=='01-01-1900'
-                                                                                                            else 'SI' if x[1]>x[5] and x[0]>x[5] and ((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
+                                                                                                            else 'SI' if x[1]>x[5] and x[0]>x[5] and x[2]+((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
                                                                                                             else 'NO',axis=1 )
 
 rawdata['Regla 1'] = rawdata[['Regla1.1','Regla1.3','Regla 0','LecturaUltimaOrden','LecturaDosMeses','Regla1.2']].apply(lambda x: 'NO' if x[3]==-10 else
@@ -172,10 +176,10 @@ rawdata.pop('Regla 2.1')
 # COMMAND ----------
 
 #Regla 4 Verificar la desviacion del consumo con respecto a la subcategoria directamente 
-rawdata['Regla 4'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria']].apply(lambda x: 
+rawdata['Regla 4'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria','ConsumoPromedioProducto']].apply(lambda x: 
                                                                                                          'Aplica Regla 1' if x[0]=='Yes'
                                                                                                     else 'Aplica Regla 2' if x[1]=='Yes'
-                                                                                                    else 'NO' if x[7]==2 or x[2]==0
+                                                                                                    else 'NO' if x[7]==2 or x[2]==0 or x[3]<=x[8]
                                 else 'Yes' if x[3]>0 and (100*(x[3]-x[2])/x[2])<=x[5] and (100*(x[3]-x[2])/x[2])>=x[4] and x[6]==1 and x[2]!=0  
                                           else 'No',axis=1)
 # caso comerciales: no se debe utilizar la regla 4 
@@ -183,8 +187,8 @@ rawdata['Regla 4'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCa
 # COMMAND ----------
 
 
-rawdata['Verificacion'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria']].apply(lambda x: 
-                                                                                                        'NO' if x[7]==2 or x[2]==0 
+rawdata['Verificacion'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria','ConsumoPromedioProducto']].apply(lambda x: 
+                                                                                                        'NO' if x[7]==2 or x[2]==0 or x[3]<=x[8]
                                            else  'Yes' if x[3]>0 and   (100*(x[3]-x[2])/x[2])<=x[5] and (100*(x[3]-x[2])/x[2])>=x[4] and x[6]==1                                            else 'No',axis=1)
 
 # COMMAND ----------
