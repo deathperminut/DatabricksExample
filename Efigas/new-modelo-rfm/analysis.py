@@ -97,6 +97,7 @@ sns.histplot(rawData[rawData["Frequency"] < 20],x='Frequency',bins=30,color='#fa
 plt.ticklabel_format(style='plain')
 plt.xticks(np.arange(0, 25,5),rotation=45)
 plt.title('Distribucion de Frecuencias en Clientes Brilla')
+plt.ylabel("Cantidad de Clientes")
 plt.show() 
 
 # COMMAND ----------
