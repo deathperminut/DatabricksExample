@@ -1,16 +1,26 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC
+# MAGIC ##**Análisis de Datos**
+# MAGIC
+# MAGIC **Distribución de Datos**
+# MAGIC
+# MAGIC Brilla cuenta con 112,742 Clientes que cumplen con los requirimientos mencionados anteriormente. A continuación se muestra las distribuciones de datos de estos Clientes.
+
+# COMMAND ----------
+
 import os
 import pandas as pd
 import numpy as np
 import pickle as pkl
 import matplotlib.pyplot as plt
 import seaborn as sns
-#from imblearn.pipeline import Pipeline as imbpipeline
+import msal
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
 from datetime import date,datetime
 today = datetime.now()
 today_dt = today.strftime("%d-%m-%Y")
-
+from matplotlib.ticker import ScalarFormatter
 import sklearn
 from sklearn import metrics
 from sklearn.cluster import KMeans
@@ -22,25 +32,25 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-dwDatabase = dbutils.secrets.get(scope='gascaribe', key='dwh-name')
-dwServer = dbutils.secrets.get(scope='gascaribe', key='dwh-host')
-dwUser = dbutils.secrets.get(scope='gascaribe', key='dwh-user')
-dwPass = dbutils.secrets.get(scope='gascaribe', key='dwh-pass')
-dwJdbcPort = dbutils.secrets.get(scope='gascaribe', key='dwh-port')
+dwDatabase = dbutils.secrets.get(scope='efigas', key='dwh-name')
+dwServer = dbutils.secrets.get(scope='efigas', key='dwh-host')
+dwUser = dbutils.secrets.get(scope='efigas', key='dwh-user')
+dwPass = dbutils.secrets.get(scope='efigas', key='dwh-pass')
+dwJdbcPort = dbutils.secrets.get(scope='efigas', key='dwh-port')
 dwJdbcExtraOptions = ""
 sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = dbutils.secrets.get(scope='gascaribe', key='bs-name')
-blob_container = dbutils.secrets.get(scope='gascaribe', key='bs-container')
+storage_account_name = dbutils.secrets.get(scope='efigas', key='bs-name')
+blob_container = dbutils.secrets.get(scope='efigas', key='bs-container')
 blob_storage = storage_account_name + ".blob.core.windows.net"
 config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = dbutils.secrets.get(scope='gascaribe', key='bs-access-key')
+blob_access_key = dbutils.secrets.get(scope='efigas', key='bs-access-key')
 spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC
-# MAGIC ### **Data Collection**
+# MAGIC ### **Colección de Datos**
 
 # COMMAND ----------
 
@@ -65,7 +75,7 @@ rawData.shape
 
 # COMMAND ----------
 
-sns.displot(rawData,x='Recency',aspect=20/8.27,kind='hist',bins=30,color='#EAAB00',fill=True)
+sns.displot(rawData,x='Recency',aspect=20/8.27,kind='hist',bins=30,color='#EAAB00',fill=True).set_axis_labels("Recencia", "Cantidad de Clientes", labelpad=10)
 plt.axvline(x=48, color='r', linestyle='-',label='Linea de 48 meses, y division de usuarios activos con inactivos')
 plt.ticklabel_format(style='plain')
 plt.xticks(np.arange(0,max(rawData['Recency'])+1,10),rotation=45)
@@ -75,18 +85,27 @@ plt.show()
 
 # COMMAND ----------
 
-sns.displot(rawData,x='Monetary',aspect=20/8.27,kind='kde',color='#fa5d20',fill=True)
+#sns.displot(rawData,x='Frequency',aspect=20/8.27,kind='hist',bins=30,color='#fa5d20',fill=True, log_scale=True, binwidth = 0.2).set_axis_labels("Frecuencia", "Cantidad de Clientes", labelpad=10).ax.xaxis.set_major_formatter(ScalarFormatter())
+#plt.title('Distribucion de Frecuencias en Clientes Brilla')
+#plt.show()
+
+
+# COMMAND ----------
+
+plt.figure().set_figwidth(14)
+sns.histplot(rawData[rawData["Frequency"] < 20],x='Frequency',bins=30,color='#fa5d20',fill=True, discrete = True)
 plt.ticklabel_format(style='plain')
-plt.xticks(np.arange(0,max(rawData['Monetary'])+1,5000000),rotation=45)
-plt.title('Distribucion de Monetario en Clientes Brilla')
+plt.xticks(np.arange(0, 25,5),rotation=45)
+plt.title('Distribucion de Frecuencias en Clientes Brilla')
+plt.ylabel("Cantidad de Clientes")
 plt.show() 
 
 # COMMAND ----------
 
-sns.displot(rawData,x='Frequency',aspect=20/8.27,kind='hist',bins=30,color='#fa5d20',fill=True)
+sns.displot(rawData[rawData["Monetary"] < 30000000],x='Monetary',aspect=20/8.27,kind='kde',color='#fa5d20',fill=True).set_axis_labels("Monetario", "Densidad de Clientes", labelpad=10)
 plt.ticklabel_format(style='plain')
-plt.xticks(np.arange(0,max(rawData['Frequency'])+1,10),rotation=45)
-plt.title('Distribucion de Frecuencias en Clientes Brilla')
+plt.xticks(np.arange(0,30000000,5000000),rotation=45)
+plt.title('Distribucion de Monetario en Clientes Brilla')
 plt.show() 
 
 # COMMAND ----------
@@ -101,6 +120,7 @@ def modelo1(df):
 
   df = df.copy()
   df = df[df['Recency'] <= 49]
+  df = df[df['Frequency'] != 0]
   # Se itera por las columnas Recency y Monetary, y crea bins divididos en quantiles.
   for cols in ['Recency','Monetary']:
     df[f'{cols}_bins'] = pd.qcut(df[cols],5)
@@ -184,10 +204,10 @@ def get_sample(df):
     return X
 
 def plot3d(X):
-  colors = ['#DF2020', '#81DF20', '#2095DF','#F4D03F']
-  kmeans = KMeans(n_clusters=4, random_state=0)
+  colors = ['#DF2020', '#81DF20', '#2095DF','#F4D03F','#C800FE']
+  kmeans = KMeans(n_clusters=5, random_state=0)
   X['cluster'] = kmeans.fit_predict(X[['Recency-Score','Monetary-Score','Frequency-Score']])
-  X['c'] = X.cluster.map({0:colors[0], 1:colors[1], 2:colors[2],3:colors[3]})
+  X['c'] = X.cluster.map({0:colors[0], 1:colors[1], 2:colors[2],3:colors[3], 4:colors[4]})
   fig = plt.figure(figsize=(40,10))
   ax = fig.add_subplot(111, projection='3d')
   ax.scatter(X['Recency-Score'], X['Monetary-Score'], X['Frequency-Score'], c=X.c, s=15)
@@ -219,19 +239,17 @@ kmeans = plot3d(X)
 centroids = kmeans.cluster_centers_
 clusters = pd.DataFrame(centroids, columns=['Recency-Score','Monetary-Score','Frequency-Score'])
 
+
 clusters['cluster'] = kmeans.predict(clusters[['Recency-Score','Monetary-Score','Frequency-Score']]) 
 clusters['magnitude'] = np.sqrt(((clusters['Recency-Score']**2) + (clusters['Monetary-Score']**2) + (clusters['Frequency-Score']**2)))
-clusters['name'] = [0,0,0,0]
+
+clusters['name'] = [0,0,0,0,0]
 clusters['name'].iloc[clusters['magnitude'].idxmax()] = 'Diamante'
 clusters['name'].iloc[clusters['magnitude'].idxmin()] = 'Bronce'
+clusters['name'].iloc[clusters['magnitude'] == list(clusters['magnitude'].nlargest(2))[1]] = 'Platino'
+clusters['name'].iloc[clusters['magnitude'] == list(clusters['magnitude'].nsmallest(2))[1]] = 'Plata'
+clusters['name'].iloc[clusters['name'] == 0] = 'Oro'
 
-for i in range(len(clusters)):
-    if (clusters['Recency-Score'].iloc[i] > 3.5) and (clusters['Frequency-Score'].iloc[i] < 2.3) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].max()) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].min()):
-        clusters['name'].iloc[i] = 'Nuevo'
-    elif (clusters['Recency-Score'].iloc[i] < 3.5) and (clusters['Frequency-Score'].iloc[i] > 2.3) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].max()) and (clusters['magnitude'].iloc[i] != clusters['magnitude'].min()):
-        clusters['name'].iloc[i] = 'Plata'
-    else:
-        pass
       
 XMerged = X.merge(clusters[['cluster','name']],on='cluster',how='left')
 
@@ -246,7 +264,3 @@ mergedX = pd.concat([XMerged[['Identificacion','Recency','Frequency','Monetary',
 # COMMAND ----------
 
 mergedX.groupby('name').agg({'Recency':['count','mean'],'Frequency':['mean'],'Monetary':['mean']})
-
-# COMMAND ----------
-
-

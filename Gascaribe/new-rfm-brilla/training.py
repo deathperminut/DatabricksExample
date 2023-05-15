@@ -22,24 +22,24 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-dwDatabase = os.environ.get("DWH_NAME_GDC")
-dwServer = os.environ.get("DWH_HOST_GDC")
-dwUser = os.environ.get("DWH_USER_GDC")
-dwPass = os.environ.get("DWH_PASS_GDC")
-dwJdbcPort = os.environ.get("DWH_PORT_GDC")
+dwDatabase = dbutils.secrets.get(scope='gascaribe', key='dwh-name')
+dwServer = dbutils.secrets.get(scope='gascaribe', key='dwh-host')
+dwUser = dbutils.secrets.get(scope='gascaribe', key='dwh-user')
+dwPass = dbutils.secrets.get(scope='gascaribe', key='dwh-pass')
+dwJdbcPort = dbutils.secrets.get(scope='gascaribe', key='dwh-port')
 dwJdbcExtraOptions = ""
 sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = os.environ.get("BS_NAME_GDC")
-blob_container = os.environ.get("BS_CONTAINER_GDC")
+storage_account_name = dbutils.secrets.get(scope='gascaribe', key='bs-name')
+blob_container = dbutils.secrets.get(scope='gascaribe', key='bs-container')
 blob_storage = storage_account_name + ".blob.core.windows.net"
 config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = os.environ.get("BS_ACCESS_KEY_GDC")
+blob_access_key = dbutils.secrets.get(scope='gascaribe', key='bs-access-key')
 spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC ### **Data Collection**
 
 # COMMAND ----------
@@ -66,8 +66,8 @@ rawData.describe()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC ### **Preprocessing**
 
 # COMMAND ----------
@@ -151,8 +151,8 @@ inactivos_df.head()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC ### **Model Training**
 
 # COMMAND ----------
@@ -190,8 +190,8 @@ XMerged = X.merge(clusters[['cluster','name']],on='cluster',how='left')
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC ### **Result Visualization**
 
 # COMMAND ----------
@@ -211,8 +211,8 @@ XMerged.head()
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
-# MAGIC 
+# MAGIC
+# MAGIC
 # MAGIC ### **Writing Data Into DWH**
 
 # COMMAND ----------
