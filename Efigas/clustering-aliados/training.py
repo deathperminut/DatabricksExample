@@ -23,25 +23,24 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-dwDatabase = os.environ.get("DWH_NAME")
-dwServer = os.environ.get("DWH_HOST")
-dwUser = os.environ.get("DWH_USER")
-dwPass = os.environ.get("DWH_PASS")
-dwJdbcPort = os.environ.get("DWH_PORT")
+dwDatabase = dbutils.secrets.get(scope='efigas', key='dwh-name')
+dwServer = dbutils.secrets.get(scope='efigas', key='dwh-host')
+dwUser = dbutils.secrets.get(scope='efigas', key='dwh-user')
+dwPass = dbutils.secrets.get(scope='efigas', key='dwh-pass')
+dwJdbcPort = dbutils.secrets.get(scope='efigas', key='dwh-port')
 dwJdbcExtraOptions = ""
 sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = os.environ.get("BS_NAME")
-blob_container = os.environ.get("BS_CONTAINER")
+storage_account_name = dbutils.secrets.get(scope='efigas', key='bs-name')
+blob_container = dbutils.secrets.get(scope='efigas', key='bs-container')
 blob_storage = storage_account_name + ".blob.core.windows.net"
 config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = os.environ.get("BS_ACCESS_KEY")
+blob_access_key = dbutils.secrets.get(scope='efigas', key='bs-access-key')
 spark.conf.set(config_key, blob_access_key)
-#is_training = dbutils.widgets.get("is_training") == "true"
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC ### **Queries Aliados Activos**
 
 # COMMAND ----------
@@ -376,7 +375,7 @@ display(XCTMergedAliados.head())
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC ### **Grande Superficie**
 
 # COMMAND ----------
@@ -500,7 +499,7 @@ display(XMotosMerged.head())
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 
+# MAGIC
 # MAGIC ### **Inactivos**
 
 # COMMAND ----------
