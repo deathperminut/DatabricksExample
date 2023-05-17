@@ -93,6 +93,10 @@ def arbol(df):
             node_GDC.append(15)
             riesgo_GDC.append('medio')
 
+        elif (df['Comport_Pago_Gas'].iloc[i] == '3-No Paga a 90 Dias') and (df['EdadM90Gas'].iloc[i] == 0):
+            node_GDC.append(15)
+            riesgo_GDC.append('medio')
+
         elif (df['Comport_Pago_Gas'].iloc[i] == '3-No Paga a 90 Dias'):
             node_GDC.append(16)
             riesgo_GDC.append('alto')
@@ -266,7 +270,7 @@ schema = StructType([
     ])
 
 today = datetime.now()
-today_dt = today.strftime("%d-%m-%Y")
+today_dt = today.strftime("%Y-%m-%d")
 
 fnbDF = fnbDF[['Contrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'Categoria','Estrato']]
 fnbDF['FechaPrediccion'] = today_dt

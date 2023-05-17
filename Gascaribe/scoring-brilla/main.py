@@ -206,7 +206,7 @@ def cupos(df):
 
 # COMMAND ----------
 
-storageCS = os.environ.get("BA_STORAGE_CS")
+storageCS = dbutils.secrets.get(scope='gascaribe', key='ba-storage-cs')
 
 fnbDF = pd.read_csv(
                         f"abfs://brilla-scoring/rawdata.csv",
