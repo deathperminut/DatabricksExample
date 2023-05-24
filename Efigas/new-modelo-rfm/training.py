@@ -238,7 +238,7 @@ df.write \
 .format("com.databricks.spark.sqldw") \
 .option("url", sqlDwUrl) \
 .option("forwardSparkAzureStorageCredentials", "true") \
-.option("dbTable", "ModeloRFMBrilla.SegmentosRFM") \
+.option("dbTable", "ModeloRFMBrilla.StageSegmentosRFM") \
 .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
 .mode("overwrite") \
 .save()
