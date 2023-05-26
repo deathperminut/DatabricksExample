@@ -9,26 +9,27 @@ today_dt = today.strftime("%Y-%m-%d")
 
 # COMMAND ----------
 
-connectionString= os.environ.get("BA_STORAGE_CS")
-dwDatabase = os.environ.get("DWH_NAME")
-dwServer = os.environ.get("DWH_HOST")
-dwUser = os.environ.get("DWH_USER")
-dwPass = os.environ.get("DWH_PASS")
-dwJdbcPort = os.environ.get("DWH_PORT")
+dwDatabase = dbutils.secrets.get(scope='gascaribe', key='dwh-name')
+dwServer = dbutils.secrets.get(scope='gascaribe', key='dwh-host')
+dwUser = dbutils.secrets.get(scope='gascaribe', key='dwh-user')
+dwPass = dbutils.secrets.get(scope='gascaribe', key='dwh-pass')
+dwJdbcPort = dbutils.secrets.get(scope='gascaribe', key='dwh-port')
 dwJdbcExtraOptions = ""
 sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = os.environ.get("BS_NAME")
-blob_container = os.environ.get("BS_CONTAINER")
+storage_account_name = dbutils.secrets.get(scope='gascaribe', key='bs-name')
+blob_container = dbutils.secrets.get(scope='gascaribe', key='bs-container')
 blob_storage = storage_account_name + ".blob.core.windows.net"
 config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = os.environ.get("BS_ACCESS_KEY")
+blob_access_key = dbutils.secrets.get(scope='gascaribe', key='bs-access-key')
 spark.conf.set(config_key, blob_access_key)
+
+
 
 # COMMAND ----------
 
 query = '''SELECT * 
 FROM ModeloCritica.BaseCritica
-WHERE CAST(FechaRegistro AS DATE)= CAST(DATEADD(HOUR,-5,GETDATE()) as DATE)'''
+WHERE CAST(FechaRegistro AS DATE)= '2023-03-08' '''
 
 # COMMAND ----------
 
@@ -49,8 +50,18 @@ rawdata = rawData.copy()
 
 # COMMAND ----------
 
+rawdata['FechaUltimaLecturaValida'] = rawdata['FechaUltimaLecturaValida'].fillna('1900-01-01')
+
+# COMMAND ----------
+
+rawdata['FechaUltimaLecturaValida'] = pd.to_datetime(rawdata['FechaUltimaLecturaValida'])
+rawdata['FechaEjecucion'] = pd.to_datetime(rawdata['FechaEjecucion'])
+rawdata['FechaLectura']=pd.to_datetime(rawdata['FechaLectura'])
+
+# COMMAND ----------
+
 # Fill NAs
-rawdata['IdTipoTrabajo'].fillna(0,inplace=True)
+rawdata['IdTipoTrabajo'].fillna(0.0,inplace=True)
 rawdata['IdClaseCausal'].fillna(0,inplace=True)
 rawdata['UltimaLecturaValida'].fillna('0.0',inplace=True)
 rawdata['ValorLecturaValido0'].fillna(0,inplace=True)
@@ -59,9 +70,8 @@ rawdata['ConsumoPromedioLocalidadSubCategoria'].fillna('0.0',inplace=True)
 rawdata['ValorLectura'].fillna('-1000.0',inplace=True)
 rawdata['ValorLecturaAnterior'].fillna('-1000.0',inplace=True)
 rawdata['LecturaDosMeses'].fillna('-1000.0',inplace=True)
-rawdata['ConsumoPromedioProducto'].fillna('0.0',inplace=True)
+rawdata['ConsumoPromedioProducto'].fillna('-100.0',inplace=True)
 rawdata['ComentarioOrden'].fillna(' ',inplace=True)
-rawdata['FechaUltimaLecturaValida'].fillna('01-01-1900',inplace=True)
 
 # COMMAND ----------
 
@@ -123,6 +133,7 @@ rawdata['UltimaLecturaValida']=rawdata['UltimaLecturaValida'].astype('float')
 rawdata['ValorLecturaValido0']=rawdata['ValorLecturaValido0'].astype('float')
 rawdata['LecturaUltimaOrden']=rawdata['LecturaUltimaOrden'].astype('float')
 
+
 # COMMAND ----------
 
 rawdata['Regla 0']=rawdata[['UltimaLecturaValida','ValorLecturaValido0','LecturaDosMeses']].apply(lambda x: 0 if x[0]==-10 else
@@ -130,18 +141,26 @@ rawdata['Regla 0']=rawdata[['UltimaLecturaValida','ValorLecturaValido0','Lectura
 
 # COMMAND ----------
 
-rawdata['Regla -1'] = raw[['DiferenciaPromedioPeriodo','RI','RS']].apply(lambda x : 0 if x[0]>x[2] or x[0]<x[1] else 1,axis=1)
+rawdata['RI'] = rawdata['RI'].fillna(-300)
+rawdata['RS'] = rawdata['RS'].fillna(300)
+
+# COMMAND ----------
+
+rawdata['Regla -1']=rawdata[['DiferenciaPromedioPeriodo','RI','RS','ConsumoPromedioProducto']].apply(lambda x: 0 if x[0]>x[2] else
+                                                                                     0 if x[0]<x[1] else
+                                                                                     0 if x[3]<0
+                                                                                     else 1,axis=1)
 
 # COMMAND ----------
 
 #Primero verificaremos que exista una orden existosa que pueda justificar el consumo
 
 rawdata['Regla1.1'] = rawdata[['IdTipoTrabajo', 'IdClaseCausal','UltimaCausal']].apply(lambda x: 'SI' if x[0] in (12620,12526,10546,12521,12137,12190,12187,12690,12527,10559) and x[2]  in (3756,3757,3766,3767,3768,9537,9645,9652,9665,9928,3761,3755)   else 'NO', axis=1)
-rawdata['Regla1.3']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura']].apply(lambda x: 'NO' if x[1]=='01-01-1900' 
-                                                                                                            else 'SI' if (x[0]<x[1] and x[3]<=x[2]) or (x[0]>x[1] and x[3]>=x[2])
+rawdata['Regla1.3']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura']].apply(lambda x: 'NO' if x[1]=='1900-01-01' 
+                                                                                                            else 'SI' if (x[0]<=x[1] and x[3]<=x[2]) or (x[0]>=x[1] and x[3]>=x[2])
                                                                                                             else 'NO',axis=1 )
 rawdata['Regla1.2']=rawdata[['FechaLectura','FechaEjecucion','LecturaUltimaOrden','ValorLectura','UltimaLecturaValida','FechaUltimaLecturaValida']].apply(lambda x: 'NO' if x[1]=='01-01-1900' or x[5]=='01-01-1900'
-                                                                                                            else 'SI' if x[1]>x[5] and x[0]>x[5] and x[2]+((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)>=x[3]
+                                                                                                            else 'SI' if x[1]>x[5] and x[0]>x[5] and (x[2]+((x[2]-x[4])/((x[1]-x[5]).days))*((x[0]-x[5]).days)) >=x[3]
                                                                                                             else 'NO',axis=1 )
 
 rawdata['Regla 1'] = rawdata[['Regla1.1','Regla1.3','Regla 0','LecturaUltimaOrden','LecturaDosMeses','Regla1.2']].apply(lambda x: 'NO' if x[3]==-10 else
@@ -176,11 +195,13 @@ rawdata.pop('Regla 2.1')
 # COMMAND ----------
 
 #Regla 4 Verificar la desviacion del consumo con respecto a la subcategoria directamente 
-rawdata['Regla 4'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria','ConsumoPromedioProducto']].apply(lambda x: 
+rawdata['Regla 4'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidadSubCategoria','VolumenActual','RISubcategoria','RSSubcategoria','Regla 0','IdCategoria','ConsumoPromedioProducto','Regla -1']].apply(lambda x: 
                                                                                                          'Aplica Regla 1' if x[0]=='Yes'
                                                                                                     else 'Aplica Regla 2' if x[1]=='Yes'
+                                                                                                    else 'Aplica Regla -1' if x[9]==1
                                                                                                     else 'NO' if x[7]==2 or x[2]==0 or x[3]<=x[8]
-                                else 'Yes' if x[3]>0 and (100*(x[3]-x[2])/x[2])<=x[5] and (100*(x[3]-x[2])/x[2])>=x[4] and x[6]==1 and x[2]!=0  
+                                                                                                    else 'NO' if 100*((x[3]-x[2])/x[2])<0
+                                else 'Yes' if x[3]>0 and x[3]<x[2] #(100*(x[3]-x[2])/x[2])<=x[5] and (100*(x[3]-x[2])/x[2])>=x[4] and x[6]==1 and x[2]!=0  
                                           else 'No',axis=1)
 # caso comerciales: no se debe utilizar la regla 4 
 
@@ -195,7 +216,7 @@ rawdata['Verificacion'] = rawdata[['Regla 1','Regla 2','ConsumoPromedioLocalidad
 
 rawdata['FechaPrediccion'] = today_dt
 rawdata['FechaPrediccion'] = pd.to_datetime(rawdata['FechaPrediccion'])
-dfNew =rawdata[['IdOrden','Idproducto','IdCiclo','PeriodoConsumo','VolumenActual','Regla 4','Verificacion','FechaPrediccion']]
+dfNew =rawdata[['IdOrden','Idproducto','IdCiclo','PeriodoConsumo','VolumenActual','Regla 4','Verificacion','FechaPrediccion','Regla -1']]
 
 # COMMAND ----------
 
