@@ -1,24 +1,7 @@
 # Databricks notebook source
-import os
+from databricks import feature_store
 import pandas as pd
-import numpy as np
-import pickle as pkl
-import matplotlib.pyplot as plt
-import seaborn as sns
-#from imblearn.pipeline import Pipeline as imbpipeline
-from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
-from datetime import date,datetime
-today = datetime.now()
-today_dt = today.strftime("%d-%m-%Y")
-
-import sklearn
-from sklearn import metrics
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-
-import warnings
-warnings.filterwarnings('ignore')
-#%matplotlib inline
+from pyspark.sql.functions import *
 
 # COMMAND ----------
 
@@ -38,11 +21,6 @@ spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### **Coleccion de Datos**
-
-# COMMAND ----------
-
 query = 'SELECT * FROM ModeloRFMBrilla.BaseRFM'
 
 # COMMAND ----------
@@ -56,29 +34,17 @@ df = spark.read \
   .option("query", query) \
   .load()
 
+# COMMAND ----------
+
 rawData = df.toPandas()
 
 # COMMAND ----------
 
-rawData.describe()
-
-# COMMAND ----------
-
-rawData.head()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### **Procesamiento**
-
-# COMMAND ----------
-
 def preprocess_inputs(df):
-    
+
     df = df.copy()
     df = df[df['Recency'] <= 49]
     df = df[df['Frequency'] != 0]
-
     df['Identificacion'] = df['Identificacion'].replace('-','').astype('int')
    
     # Se itera por las columnas Recency y Monetary, y crea bins divididos en quantiles.
@@ -132,6 +98,7 @@ def preprocess_inputs(df):
 # COMMAND ----------
 
 X = preprocess_inputs(rawData)
+X['Score'] = X['Recency-Score'].astype('str') + X['Frequency-Score'].astype('str') + X['Monetary-Score'].astype('str')
 X.head()
 
 # COMMAND ----------
@@ -156,89 +123,43 @@ inactivos_df.head()
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### **Entrenamiento de Modelo**
+fs = feature_store.FeatureStoreClient()
+table_name = f"efg_segmentacion_features"
+inactivos = "EFG_inactivos_brilla"
 
 # COMMAND ----------
 
-colors = ['#DF2020', '#81DF20', '#2095DF','#F4D03F','#C800FE']
-n_clusters = 5
-kmeans = KMeans(n_clusters=n_clusters, random_state=0)
-X['cluster'] = kmeans.fit_predict(X[['Recency-Score','Monetary-Score','Frequency-Score']])
-X['c'] = X.cluster.map({0:colors[0], 1:colors[1], 2:colors[2],3:colors[3],4:colors[4]})
+#Creacion/actualización de feature store de clientes activos de brilla
+sparkDF=spark.createDataFrame(X)
+try:
+    fs.write_table(
+        name=table_name,
+        df=sparkDF,
+        mode='overwrite'
+    )
+except:
+    fs.create_table(
+        name=table_name,
+        primary_keys=["Identificacion"],
+        schema=sparkDF.schema,
+        description="EFG_Segmentacion_Features"
+    )
 
-with open(f'/dbfs/ModelosEFG/RFMBrilla/KMeans_RFM.pkl', 'wb') as handle:
-    pkl.dump(kmeans, handle, protocol = pkl.HIGHEST_PROTOCOL)
-
-# COMMAND ----------
-
-centroids = kmeans.cluster_centers_
-clusters = pd.DataFrame(centroids, columns=['Recency-Score','Monetary-Score','Frequency-Score'])
-
-
-clusters['cluster'] = kmeans.predict(clusters[['Recency-Score','Monetary-Score','Frequency-Score']]) 
-clusters['magnitude'] = np.sqrt(((clusters['Recency-Score']**2) + (clusters['Monetary-Score']**2) + (clusters['Frequency-Score']**2)))
-
-clusters['name'] = [0,0,0,0,0]
-clusters['name'].iloc[clusters['magnitude'].idxmax()] = 'Diamante'
-clusters['name'].iloc[clusters['magnitude'].idxmin()] = 'Bronce'
-clusters['name'].iloc[clusters['magnitude'] == list(clusters['magnitude'].nlargest(2))[1]] = 'Platino'
-clusters['name'].iloc[clusters['magnitude'] == list(clusters['magnitude'].nsmallest(2))[1]] = 'Plata'
-clusters['name'].iloc[clusters['name'] == 0] = 'Oro'
-
-      
-XMerged = X.merge(clusters[['cluster','name']],on='cluster',how='left')
 
 # COMMAND ----------
 
-XMerged['Score'] = XMerged['Recency-Score'].astype('str') + XMerged['Frequency-Score'].astype('str') + XMerged['Monetary-Score'].astype('str')
-
-# COMMAND ----------
-
-XMerged
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC
-# MAGIC
-# MAGIC ### **Writing Data Into DWH**
-
-# COMMAND ----------
-
-newX = pd.concat([XMerged[['Identificacion', 'Recency', 'Frequency', 'Monetary', 'cluster','name','Score']],inactivos_df[['Identificacion', 'Recency', 'Frequency', 'Monetary', 'cluster','name','Score']]],axis=0).reset_index(drop=True)
-newX.head()
-
-# COMMAND ----------
-
-results = newX[['Identificacion','cluster','Score','name']]
-results['FechaPrediccion'] = today_dt
-results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
-#results['Valido'] = 1
-
-results = results.rename(columns={'cluster':'Segmento',
-                                 'name':'NombreSegmento',
-                                 'Score':'Puntaje'})
-
-# COMMAND ----------
-
-results.head()
-
-# COMMAND ----------
-
-schema = StructType([
-    StructField("Identificacion", StringType(), True),
-    StructField("Segmento", IntegerType(), True),
-    StructField("Puntaje", StringType(), True),
-    StructField("NombreSegmento", StringType(), True),
-    StructField("FechaPrediccion", DateType(), True)
-    ])
-df = spark.createDataFrame(results, schema = schema)
-df.write \
-.format("com.databricks.spark.sqldw") \
-.option("url", sqlDwUrl) \
-.option("forwardSparkAzureStorageCredentials", "true") \
-.option("dbTable", "ModeloRFMBrilla.StageSegmentosRFM") \
-.option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
-.mode("overwrite") \
-.save()
+#Creacion/actualización de feature store de clientes inactivos de brilla
+spark_inactivos = spark.createDataFrame(inactivos_df)
+try:
+    fs.write_table(
+        name=inactivos,
+        df=spark_inactivos,
+        mode='overwrite'
+    )
+except:
+    fs.create_table(
+        name=inactivos,
+        primary_keys=["Identificacion"],
+        schema=spark_inactivos.schema,
+        description="EFG_inactivos_brilla"
+    )
