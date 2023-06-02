@@ -104,8 +104,32 @@ with mlflow.start_run():
         training_set=training_set,
         registered_model_name="RFM_efg",
     )
-    
-    mlflow.log_metric("Centroid RMSD", np.sqrt(model.inertia_/len(training_df)))
+    RMSD = np.sqrt(model.inertia_/len(training_df))
+    mlflow.log_metric("Centroid RMSD", RMSD)
     mlflow.log_params(params)
 
 
+
+# COMMAND ----------
+
+from mlflow.tracking import MlflowClient
+def get_latest_model_version(model_name):
+    latest_version = 1
+    mlflow_client = MlflowClient()
+    for mv in mlflow_client.search_model_versions(f"name='{model_name}'"):
+      version_int = int(mv.version)
+      if version_int > latest_version:
+        latest_version = version_int
+    return latest_version
+
+# COMMAND ----------
+
+client = MlflowClient()
+if( RMSD < 1.35 and RMSD >1):
+    version = get_latest_model_version("RFM_efg")
+    client.transition_model_version_stage(
+        name="RFM_efg",
+        version=version,
+        stage="Production",
+        archive_existing_versions = True
+    )

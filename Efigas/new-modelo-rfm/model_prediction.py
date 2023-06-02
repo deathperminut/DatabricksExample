@@ -9,10 +9,10 @@ import mlflow
 from databricks import feature_store
 from datetime import date,datetime
 from pyspark.sql import functions as F
-from pyspark.sql.functions import sum,avg,max,count,col
+from pyspark.sql.functions import sum,avg,max,count,col,lit
 
 
-model_uri = f"models:/{model_name}/Staging"
+model_uri = f"models:/{model_name}/Production"
 local_path = ModelsArtifactRepository(model_uri).download_artifacts("") # download model from remote registry
 
 requirements_path = os.path.join(local_path, "requirements.txt")
@@ -58,7 +58,7 @@ fs = feature_store.FeatureStoreClient()
 
 import mlflow
 
-model_uri = f"models:/{model_name}/latest"
+model_uri = f"models:/{model_name}/Production"
 
 # create spark user-defined function for model prediction
 preds = fs.score_batch(model_uri, table, "cluster int, name string")
@@ -82,9 +82,9 @@ inactivos.show()
 
 # COMMAND ----------
 
-results = newX[['Identificacion', 'cluster', 'Score','name']]
+results = newX[['Identificacion', 'cluster', 'Score','name', 'Recency', 'Frequency', 'Monetary']]
 results = results.withColumn("FechaPrediccion", F.current_date())
-results = results.withColumnRenamed("cluster", "Segmento").withColumnRenamed("name", "NombreSegmento").withColumnRenamed("Score", "Puntaje")
+results = results.withColumnRenamed("cluster", "Segmento").withColumnRenamed("name", "NombreSegmento").withColumnRenamed("Score", "Puntaje").withColumnRenamed("Recency", "Recencia").withColumnRenamed("Frequency", "Frecuencia").withColumnRenamed("Monetary", "Monetario")
 
 results.write \
 .format("com.databricks.spark.sqldw") \
@@ -118,3 +118,11 @@ group.write \
 .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
 .mode("overwrite") \
 .save()
+
+# COMMAND ----------
+
+results = results.withColumn("is_current", lit(1))
+
+# COMMAND ----------
+
+results.write.mode('overwrite').saveAsTable('analiticaefg.brilla.segmentosrfm')

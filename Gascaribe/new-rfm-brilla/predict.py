@@ -11,6 +11,8 @@ from datetime import date,datetime
 today = datetime.now()
 today_dt = today.strftime("%d-%m-%Y")
 
+from pyspark.sql.functions import lit
+
 import sklearn
 from sklearn import metrics
 from sklearn.cluster import KMeans
@@ -221,6 +223,14 @@ df.write \
 .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
 .mode("overwrite") \
 .save()
+
+# COMMAND ----------
+
+df = df.withColumn("is_current", lit(1))
+
+# COMMAND ----------
+
+df.write.mode('overwrite').saveAsTable('analiticagdc.brilla.segmentosrfm')
 
 # COMMAND ----------
 
