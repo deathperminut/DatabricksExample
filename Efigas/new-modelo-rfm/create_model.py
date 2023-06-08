@@ -29,6 +29,8 @@ customer_features_df = fs.read_table(
 
 # COMMAND ----------
 
+mlflow.set_experiment(f"/Users/cplata@horbath.com/create_model")
+
 feature_lookups = [
     FeatureLookup(
       table_name = 'efg_segmentacion_features',

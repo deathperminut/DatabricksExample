@@ -12,12 +12,6 @@ from pyspark.sql import functions as F
 from pyspark.sql.functions import sum,avg,max,count,col,lit
 
 
-model_uri = f"models:/{model_name}/Production"
-local_path = ModelsArtifactRepository(model_uri).download_artifacts("") # download model from remote registry
-
-requirements_path = os.path.join(local_path, "requirements.txt")
-if not os.path.exists(requirements_path):
-  dbutils.fs.put("file:" + requirements_path, "", True)
 
 # COMMAND ----------
 
@@ -37,7 +31,7 @@ spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
-# MAGIC %pip install -r $requirements_path
+#%pip install -r $requirements_path
 
 # COMMAND ----------
 

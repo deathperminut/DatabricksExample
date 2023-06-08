@@ -102,10 +102,13 @@ plt.show()
 
 # COMMAND ----------
 
-sns.displot(rawData[rawData["Monetary"] < 30000000],x='Monetary',aspect=20/8.27,kind='kde',color='#fa5d20',fill=True).set_axis_labels("Monetario", "Densidad de Clientes", labelpad=10)
+plt.figure().set_figwidth(14)
+sns.histplot(rawData[rawData["Monetary"] < 20000000],x='Monetary',color='r', binwidth = 1000000)
 plt.ticklabel_format(style='plain')
-plt.xticks(np.arange(0,30000000,5000000),rotation=45)
+plt.xticks(np.arange(0,20000000,1000000),rotation=45)
 plt.title('Distribucion de Monetario en Clientes Brilla')
+plt.ylabel("Cantidad de Clientes")
+plt.xlabel("Colocación")
 plt.show() 
 
 # COMMAND ----------
