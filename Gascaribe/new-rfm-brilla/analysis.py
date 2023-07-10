@@ -44,19 +44,8 @@ spark.conf.set(config_key, blob_access_key)
 
 # COMMAND ----------
 
-query = 'SELECT * FROM ModeloRFMBrilla.BaseRFM'
-
-# COMMAND ----------
-
-df = spark.read \
-  .format("com.databricks.spark.sqldw") \
-  .option("url", sqlDwUrl) \
-  .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
-  .option("forwardSparkAzureStorageCredentials", "true") \
-  .option("maxStrLength", "1024" ) \
-  .option("query", query) \
-  .load()
-
+df = spark.read.table("analiticagdc.brilla.baserfm")
+df = df.withColumn("Monetary",df.Monetary.cast('long'))
 rawData = df.toPandas()
 
 # COMMAND ----------
@@ -246,7 +235,3 @@ mergedX = pd.concat([XMerged[['Identificacion','Recency','Frequency','Monetary',
 # COMMAND ----------
 
 mergedX.groupby('name').agg({'Recency':['count','mean'],'Frequency':['mean'],'Monetary':['mean']})
-
-# COMMAND ----------
-
-
