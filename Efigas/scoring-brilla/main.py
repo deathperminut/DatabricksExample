@@ -94,11 +94,11 @@ def arbol(df):
             riesgo_GDC.append('medio')
 
         elif (df['Comport_Pago_Gas'].iloc[i] == '3-No Paga a 90 Dias') and (df['EdadM90Gas'].iloc[i] == 0):
-            node_GDC.append(15)
+            node_GDC.append(16)
             riesgo_GDC.append('medio')
 
         elif (df['Comport_Pago_Gas'].iloc[i] == '3-No Paga a 90 Dias'):
-            node_GDC.append(16)
+            node_GDC.append(17)
             riesgo_GDC.append('alto')
 
         else:
