@@ -7,4 +7,4 @@ El repositorio se integra directamente con Azure Databricks, que es el motor sob
 How to deploy?
 
 Para desplegar los modelos, es necesario llevar los notebooks a la rama master y asegurar de que el notebook tenga un cluster asociado en Databricks.
-Una vez el modelo está deplegado, se usa Azure DataFactory para llamarlo periódicamente.
+Una vez el modelo está deplegado, se usa Azure DataFactory o los Workflows de Databricks para llamarlo periódicamente.
