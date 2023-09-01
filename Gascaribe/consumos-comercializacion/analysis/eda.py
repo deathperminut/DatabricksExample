@@ -314,7 +314,3 @@ X.columns
 
 newX = pd.DataFrame(columns=X.columns)
 
-
-# COMMAND ----------
-
-festivos2018 = ['']
