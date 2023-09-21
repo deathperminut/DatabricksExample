@@ -73,4 +73,10 @@
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC DELETE FROM analiticagdc.comercializacion.estado
+# MAGIC WHERE fecharegistro = '2023-09-10'
+
+# COMMAND ----------
+
 

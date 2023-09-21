@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import max as pySparkMax
+from pyspark.sql.functions import col
 from delta.tables import DeltaTable
 import random
 import scipy.stats as stats
@@ -55,11 +57,17 @@ spark = SparkSession.builder \
     .config("spark.some.config.option", "config-value") \
     .getOrCreate()
 
-result = spark.sql("SELECT * FROM analiticagdc.comercializacion.ingesta ORDER BY estacion,fecha")
-estados = spark.sql("SELECT * FROM analiticagdc.comercializacion.estado WHERE fecharegistro = (SELECT MAX(fecharegistro) FROM analiticaefg.comercializacion.estado)")
+ingesta = DeltaTable.forName(spark, "analiticagdc.comercializacion.ingesta").toDF()
+estado = DeltaTable.forName(spark, "analiticagdc.comercializacion.estado").toDF()
 
-df = result.toPandas()
-estados = estados.toPandas()
+t1 = estado.groupBy("estacion").agg(pySparkMax("fecharegistro").alias("latest_fecharegistro"))
+
+estado_join = t1.alias('t1').join(estado.alias('e'), (t1.estacion == estado.estacion) & (t1.latest_fecharegistro == estado.fecharegistro),'inner').select('t1.estacion','e.estado','t1.latest_fecharegistro')
+
+
+
+df_ingesta = ingesta.toPandas()
+df_estado = estado_join.toPandas()
 
 # COMMAND ----------
 
@@ -165,7 +173,7 @@ def process_inputs(df,today=today_dt):
 
 # COMMAND ----------
 
-X = process_inputs(df)
+X = process_inputs(df_ingesta)
 
 # COMMAND ----------
 
@@ -180,14 +188,16 @@ def active_station_criterion(df,estados,nDaysNew=15,percentage=0.9):
     estaciones = df_activas['estacion'].unique()
 
     for estacion in estaciones:
-        volArray = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
+        vol_array = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
+
+        len_vol_array = (len(vol_array))
 
         count = 0
-        for vol in volArray:
+        for vol in vol_array:
             if vol == 0:
                 count += 1
         
-        if count >= minDays:
+        if (count >= minDays) or (len_vol_array < 15):
             estacionesStatus[estacion] = 'Inactiva'
         else:
             estacionesStatus[estacion] = 'Activa'
@@ -214,7 +224,7 @@ def active_station_criterion(df,estados,nDaysNew=15,percentage=0.9):
 
 # COMMAND ----------
 
-status_active_df = active_station_criterion(X,estados)
+status_active_df = active_station_criterion(X,df_estado)
 
 # COMMAND ----------
 
@@ -228,14 +238,16 @@ def new_station_criterion(df,estados,nDaysNew=30,percentage=0.9):
     estaciones = df_inactivas['estacion'].unique()
 
     for estacion in estaciones:
-        volArray = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
-        #print(volArray)
+        vol_array = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
+        
+        len_vol_array = len(vol_array)
+
         count = 0
-        for vol in volArray:
+        for vol in vol_array:
             if vol == 0:
                 count += 1
         #print(count)
-        if count >= maxNumCount:
+        if (count >= maxNumCount) or (len_vol_array < 30):
             estacionesStatus[estacion] = 'Nueva'
         else:
             estacionesStatus[estacion] = 'Activa'
@@ -258,7 +270,7 @@ def new_station_criterion(df,estados,nDaysNew=30,percentage=0.9):
 
 # COMMAND ----------
 
-status_inactive_df = new_station_criterion(X,estados)
+status_inactive_df = new_station_criterion(X,df_estado)
 
 # COMMAND ----------
 
@@ -311,6 +323,10 @@ X = hampel_filter(X,window_size=100)
 
 # COMMAND ----------
 
+status_df[status_df['estacion'] == 'CARTON COLOMBIA(MOLINO 5)']
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC #### **Escritura de datos en el DeltaLake**
 
@@ -340,7 +356,7 @@ schema = StructType([
     StructField("estado", StringType(), True),
     StructField("fecharegistro", DateType(), True)
     ])
-df = spark.createDataFrame(status_active_df, schema = schema)
+df = spark.createDataFrame(status_df, schema = schema)
 
 deltaTable = DeltaTable.forName(spark, 'analiticagdc.comercializacion.estado')
 
