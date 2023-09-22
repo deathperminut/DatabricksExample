@@ -1,5 +1,4 @@
 # Databricks notebook source
-import delta.tables
 import psycopg2
 from delta.tables import *
 from pyspark.sql.functions import asc, desc
@@ -11,6 +10,10 @@ password = dbutils.secrets.get(scope='gascaribe', key='com-password')
 host = dbutils.secrets.get(scope='gascaribe', key='com-host')
 port = dbutils.secrets.get(scope='gascaribe', key='com-port')
 database = dbutils.secrets.get(scope='gascaribe', key='com-database')
+
+# COMMAND ----------
+results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.factconsumoproyectado')\
+    .select("id", "valorpoyectado", "fecha")
 
 # COMMAND ----------
 
