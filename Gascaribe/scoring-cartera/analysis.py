@@ -243,8 +243,7 @@ df.head()
 
 results = df[['IdTipoProducto','IdProducto','Intervalo','VarPago','VarMora','VarRefinanciaciones','varSuspensiones','DiasSuspendidos','Castigado','ConteoCastigado','Ponderado','Segmento','SegmentoNombre']]
 results['FechaPrediccion'] = today_dt
-results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
-#results['Valido'] = 1
+results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion']).dt.strftime('%Y-%m-%d')
 
 results = results.rename(columns={'VarPago':'PagosFacturacion',
                                  'VarMora':'MorasEscaladas',
