@@ -72,3 +72,69 @@ results.write.jdbc(
     mode="overwrite", 
     properties=properties
 )
+
+# COMMAND ----------
+
+def pgConnection(user, password, host, port, db):
+    """
+    It creates a connection to a PostgreSQL database and returns the connection and cursor objects
+
+    :param user: The username to connect to the database
+    :param password: The password for the user
+    :param host: the hostname of the server
+    :param port: 5432
+    :param db: The name of the database to connect to
+    :return: A connection and a cursor.
+    """
+
+    connection = psycopg2.connect(
+        user=user,
+        password=password,
+        host=host,
+        port=port,
+        database=db,
+        connect_timeout=60)
+    cursor = connection.cursor()
+    return connection, cursor
+
+# COMMAND ----------
+
+upsert_statement = """
+INSERT INTO volumenes(id_estacion, volumen, energia, fecha, created_at, updated_at)
+SELECT
+    idestacion AS id_estacion,
+    volumen,
+    NULL AS energia,
+    fecha + INTERVAL '5' HOUR AS fecha,
+    current_timestamp AS created_at,
+    current_timestamp AS updated_at
+FROM volumenes_bi
+ON CONFLICT (id_estacion, fecha)
+DO UPDATE SET
+    volumen = EXCLUDED.volumen,
+    updated_at = EXCLUDED.updated_at
+"""
+
+# COMMAND ----------
+
+cur = None
+conn = None
+
+try:
+    conn, cur = pgConnection(user, password, host, port, database)
+
+    try:
+        cur.execute(upsert_statement)
+        conn.commit()
+
+    except Exception as e:
+        print(f"Upsert failed. {e}")
+
+except Exception as e:
+    print(f"Database connection failed. {e}")
+
+finally:
+    if(cur):
+        cur.close()
+    if(conn):
+        conn.close()
