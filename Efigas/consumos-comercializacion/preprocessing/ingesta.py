@@ -56,7 +56,11 @@ rawDataConsumption = consumption_df.toPandas()
 
 # COMMAND ----------
 
-rawDataConsumption
+rawDataConsumption.head()
+
+# COMMAND ----------
+
+rawData.head()
 
 # COMMAND ----------
 
@@ -67,7 +71,8 @@ def preprocess_inputs(estaciones, consumos, estaciones_no_utilizables):
 
     df = estaciones.merge(consumos,
                    how='inner',
-                   on='IdComercializacion')
+                   left_on='IdComercializacion',
+                   right_on='IdEstacion')
     
     df = df[~df['IdDispositivo'].isin(estaciones_no_utilizables)]
 
