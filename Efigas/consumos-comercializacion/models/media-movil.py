@@ -41,7 +41,7 @@ t1 = estado.groupBy("estacion").agg(pySparkMax("fecharegistro").alias("latest_fe
 
 estado_join = t1.alias('t1').join(estado.alias('e'), (t1.estacion == estado.estacion) & (t1.latest_fecharegistro == estado.fecharegistro),'inner').select('t1.estacion','e.estado','t1.latest_fecharegistro')
 
-results = insumo.alias('i').join(estado_join.alias('e'), (insumo.estacion == estado_join.estacion),'inner').select("i.estacion", "i.fecha", "i.volumenm3", "i.festivos", "i.diadesemana", "i.volumen_corregido", "residuals", "e.estado","e.latest_fecharegistro").where('e.estado in ("Nueva","Inactiva")').orderBy('i.estacion','i.fecha')
+results = insumo.alias('i').join(estado_join.alias('e'), (insumo.estacion == estado_join.estacion),'inner').select("i.estacion", "i.fecha", "i.volumenm3", "i.festivos", "i.diadesemana", "i.volumen_corregido", "residuals", "e.estado","e.latest_fecharegistro").where('e.estado in ("Nueva","Inactiva","Activa")').orderBy('i.estacion','i.fecha')
 
 results = results.toPandas()
 
@@ -49,9 +49,11 @@ results = results.toPandas()
 
 nueva = results[results['estado'] == 'Nueva']
 inactiva = results[results['estado'] == 'Inactiva']
+activa = results[results['estado'] == 'Activa']
 
 print(f'Tamano de Nueva: {nueva.shape}.\nEstaciones en Nueva: {len(nueva["estacion"].unique())}')
 print(f'Tamano de Inactiva: {inactiva.shape}.\nEstaciones en Inactiva: {len(inactiva["estacion"].unique())}')
+print(f'Tamano de Nueva: {activa.shape}.\nEstaciones en Nueva: {len(activa["estacion"].unique())}')
 
 # COMMAND ----------
 
@@ -128,7 +130,45 @@ pred_inactiva.head(10)
 
 # COMMAND ----------
 
-predicciones = pd.concat([pred_nueva,pred_inactiva],axis=0)
+def make_predictions_activa(df,column,fecha,dias_mean=10):
+    df = df.copy()
+
+    pred_dict = {}
+    estaciones = []
+    predicciones = []
+    fechas = []
+
+    for estacion in df['estacion'].unique():
+        _ = df[df['estacion'] == estacion]
+
+        latest_mean = _.tail(dias_mean)[column].mean()
+
+        estaciones.append(estacion)
+        predicciones.append(latest_mean)
+        fechas.append(fecha)
+    
+    pred_dict['estacion'] = estaciones
+    pred_dict['fecha'] = fechas
+    pred_dict['predicciones'] = predicciones
+    pred_dict['modelo'] = ['Media Movil']*len(df['estacion'].unique())
+    pred_dict['estado'] = ['Activa']*len(df['estacion'].unique())
+
+    predicciones_df = pd.DataFrame(pred_dict)
+    predicciones_df['fecha'] = pd.to_datetime(predicciones_df['fecha'])
+
+    return predicciones_df
+
+# COMMAND ----------
+
+pred_activa = make_predictions_activa(df=activa,
+                                      column='volumen_corregido',
+                                      fecha=tomorrow)
+
+pred_activa.head(10)
+
+# COMMAND ----------
+
+predicciones = pd.concat([pred_nueva,pred_inactiva,pred_activa],axis=0)
 predicciones
 
 # COMMAND ----------
