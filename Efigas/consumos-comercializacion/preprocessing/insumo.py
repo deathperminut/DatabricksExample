@@ -271,6 +271,7 @@ def prophet_filter(df,periods,sd=3,n=4):
 
         future = model.make_future_dataframe(periods=periods)
         forecast = model.predict(future)[['ds','yhat']]
+        _['ds'] = pd.to_datetime(_['ds'] )
         residuals_df = _.merge(forecast,how='left',on='ds')
         residuals_df['residuals'] = residuals_df['y'] - residuals_df['yhat']
         residuals = residuals_df['y'] - residuals_df['yhat']
