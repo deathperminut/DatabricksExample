@@ -99,7 +99,7 @@ def predict_estaciones(df, two_years_ago, two_days_prior,today):
                 'estacion': estacion,
                 'modelo': 'Prophet Forecasting',
                 'mae': error,
-                'fecha': today,
+                'fecha': tomorrow,
                 'predicciones': predicciones,
                 'error': errorDelDiaSiguiente,
                 'error_absoluto': errorAbsolutoAlDiaSiguiente,
@@ -110,7 +110,7 @@ def predict_estaciones(df, two_years_ago, two_days_prior,today):
                 'estacion': estacion,
                 'modelo': 'Prophet Forecasting',
                 'mae': -1,
-                'fecha': today,
+                'fecha': tomorrow,
                 'predicciones': predicciones,
                 'error': -1,
                 'error_absoluto': -1,
@@ -126,6 +126,7 @@ prophet_results = predict_estaciones(results,two_years_ago, two_days_prior,today
 # COMMAND ----------
 
 predicciones = prophet_results[['estacion','fecha','predicciones','error_absoluto','modelo','estado']]
+predicciones['fecha'] = pd.to_datetime(predicciones['fecha'])
 predicciones
 
 # COMMAND ----------
