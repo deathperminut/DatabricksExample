@@ -46,4 +46,22 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### **RNN**
 
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE TABLE IF NOT EXISTS analiticaefg.comercializacion.predicciones_rnn (
+# MAGIC   estacion             VARCHAR(50),
+# MAGIC   fecha                DATE,
+# MAGIC   predicciones         FLOAT,
+# MAGIC   error_absoluto       FLOAT,
+# MAGIC   modelo               VARCHAR(20),
+# MAGIC   estado               VARCHAR(20)
+# MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DROP TABLE analiticaefg.comercializacion.predicciones_rnn
