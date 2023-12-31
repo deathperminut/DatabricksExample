@@ -217,12 +217,6 @@ predictions_tomorrow, predictions_yesterday = predict_consumption_for_date(histo
 
 # COMMAND ----------
 
-import time
-
-time.sleep(1000000)
-
-# COMMAND ----------
-
 predictions_yesterday['fecha'] = pd.to_datetime(predictions_yesterday['fecha'])
 results['fecha'] = pd.to_datetime(results['fecha'])
 
