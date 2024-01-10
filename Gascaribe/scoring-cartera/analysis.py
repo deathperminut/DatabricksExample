@@ -10,7 +10,7 @@ from delta.tables import *
 from pyspark.sql.functions import *
 from datetime import date,datetime
 today = datetime.now()
-today_dt = today.strftime("%d-%m-%Y")
+today_dt = today.strftime("%Y-%m-%d")
 
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
@@ -243,7 +243,7 @@ df.head()
 
 results = df[['IdTipoProducto','IdProducto','Intervalo','VarPago','VarMora','VarRefinanciaciones','varSuspensiones','DiasSuspendidos','Castigado','ConteoCastigado','Ponderado','Segmento','SegmentoNombre']]
 results['FechaPrediccion'] = today_dt
-results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion']).dt.strftime('%Y-%m-%d')
+results['FechaPrediccion'] = pd.to_datetime(results['FechaPrediccion'])
 
 results = results.rename(columns={'VarPago':'PagosFacturacion',
                                  'VarMora':'MorasEscaladas',
