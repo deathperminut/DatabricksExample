@@ -3,16 +3,21 @@ import delta.tables
 import psycopg2
 from delta.tables import *
 from pyspark.sql.functions import asc, desc
+from pyspark.sql.window import Window
+from pyspark.sql.functions import row_number
+from pyspark.sql.functions import col
 
 # COMMAND ----------
 
+windowSpec  = Window.partitionBy("IdContrato").orderBy(desc("FechaPrediccion"))
+
 results = DeltaTable.forName(spark, 'analiticagdc.brilla.scoringFNB')\
     .toDF()\
-    .orderBy(desc("FechaPrediccion"))\
-    .dropDuplicates(["IdContrato"])\
+    .withColumn("row_number", row_number().over(windowSpec))\
+    .filter(col("row_number") == 1)\
     .select("IdContrato", "CupoAsignado", "Nodo", "Riesgo")
 
-newColumns = ["contract_id", "assigned_quotas", "nodo", "risk_level"]
+newColumns = ["contract_id", "assigned_quota", "nodo", "risk_level"]
 
 for i in range(len(results.columns)):
     results = results.withColumnRenamed(results.columns[i], newColumns[i])
