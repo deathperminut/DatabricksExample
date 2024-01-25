@@ -61,7 +61,7 @@ val volumen = base.as("b")
 		Seq("IdDispositivo", "Medidor"),
 		"inner")
 	.join(
-		DeltaTable.forName("novo.silver.facthistoriadispositivo").toDF.as("f"),
+		DeltaTable.forName("bigdc.novo.facthistoriadispositivo").toDF.as("f"),
 		date_trunc("day", $"FechaHoraHistoria") === $"b.Fecha" and
 		$"b.IdHistoriaDispositivo" === $"f.IdHistoriaDispositivo" and
 		$"b.IdColumna" === $"f.IdColumna" and
@@ -83,7 +83,7 @@ val volumen = base.as("b")
 
 val volumenFaltantes = faltantes.as("f")
 	.join(
-		DeltaTable.forName("novo.silver.dimhistoriadispositivo").toDF.as("dh"),
+		DeltaTable.forName("bigdc.novo.dimhistoriadispositivo").toDF.as("dh"),
 		$"f.IdDispositivo" === $"dh.IdDispositivo" and
 		$"dh.is_current" === 1 and
 		lower($"dh.Nombre").contains("daily") and
@@ -91,7 +91,7 @@ val volumenFaltantes = faltantes.as("f")
 		"inner")
 	.crossJoin(fechas)
 	.join(
-		DeltaTable.forName("novo.silver.facthistoriadispositivo").toDF.as("fh"),
+		DeltaTable.forName("bigdc.novo.facthistoriadispositivo").toDF.as("fh"),
 		date_trunc("day", $"fh.FechaHoraHistoria") === $"Fecha" and
 		$"dh.IdHistoriaDispositivo" === $"fh.IdHistoriaDispositivo" and
 		$"fh.IdColumna" === 2 and
