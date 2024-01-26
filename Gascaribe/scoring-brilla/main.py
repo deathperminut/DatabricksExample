@@ -155,18 +155,6 @@ def nodos(df):
 
 # COMMAND ----------
 
-storageCS = dbutils.secrets.get(scope='gascaribe', key='ba-storage-cs')
-
-fnbDF = pd.read_csv(
-                        f"abfs://brilla-scoring/rawdata.csv",
-                        storage_options={
-                                "connection_string":storageCS
-                                },
-                        encoding='utf8'
-                        )
-
-# COMMAND ----------
-
 def cupos(df):
 
     df = df.copy()
@@ -215,12 +203,24 @@ def cupos(df):
         elif (df['Estrato'].iloc[i] in [1, 2, 3, 4, 5, 6]) and (df['Nodo Combinado'].iloc[i] in [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]):
             cupo.append(cupos_bi[df['Nodo codificado'].iloc[i]])
         else:
-            cupo.append('missing')
+            cupo.append(0)
 
     df['Nuevo Cupo'] = cupo
 
     return df
 
+
+# COMMAND ----------
+
+storageCS = dbutils.secrets.get(scope='gascaribe', key='ba-storage-cs')
+
+fnbDF = pd.read_csv(
+                        f"abfs://brilla-scoring/rawdata.csv",
+                        storage_options={
+                                "connection_string":storageCS
+                                },
+                        encoding='utf8'
+                        )
 
 # COMMAND ----------
 

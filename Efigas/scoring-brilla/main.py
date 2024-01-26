@@ -128,6 +128,19 @@ def riesgo_total(df):
 
 # COMMAND ----------
 
+def riesgo_codificado(estrato, riesgo, brilla):
+    r = 0
+    if(riesgo == 'bajo'):
+        r = 1
+    
+    b = 0
+    if(brilla != 'missing'):
+        b = 1
+
+    return estrato * 100 + r * 10 + b
+
+# COMMAND ----------
+
 def nodos(df):
 
     nuevo = []
@@ -140,6 +153,8 @@ def nodos(df):
 
     df['Nodo Combinado'] = nuevo
 
+    df['Nodo codificado'] = df.apply(lambda x : riesgo_codificado(x['Estrato'], x['Riesgo Combinado'], x['Riesgo Brilla']), axis=1)
+
     return df
 
 # COMMAND ----------
@@ -148,60 +163,53 @@ def cupos(df):
 
     df = df.copy()
 
-    cupos_gdc = {
-        1: 3055000,
-        2: 3335000,
-        3: 3705000,
-        4: 4240000,
-        5: 5975000,
-        6: 5975000
+    cupos_efg = {
+        1: 3340000,
+        2: 3645000,
+        3: 4050000,
+        4: 4635000,
+        5: 6530000,
+        6: 6530000
     }
     
     cupos_bi = {
-        1: 3800000,
-        2: 4000000,
-        3: 4500000,
-        4: 5000000,
-        5: 5500000,
-        6: 5700000,
-        7: 6275000
+        100: 4150000,
+        101: 4400000,
+        110: 4900000,
+        111: 5500000,
+        200: 4150000,
+        201: 4400000,
+        210: 6000000,
+        211: 6000000,
+        300: 4150000,
+        301: 4400000,
+        310: 6000000,
+        311: 6000000,
+        400: 4950000,
+        401: 5000000,
+        410: 6250000,
+        411: 6250000,
+        500: 6850000,
+        501: 7175000,
+        510: 7500000,
+        511: 7500000,
+        600: 6850000,
+        601: 7175000,
+        610: 7500000,
+        611: 7500000,
     }
     
     cupo = []
 
+    cupo = []
+
     for i in range(len(df)):
         if df['Nodo Combinado'].iloc[i] in [7, 16]:
-            cupo.append(cupos_gdc[df['Estrato'].iloc[i]])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
-            cupo.append(cupos_bi[2])
-        elif (df['Estrato'].iloc[i] == 1) and (df['Nodo Combinado'].iloc[i] == 1):
-            cupo.append(cupos_bi[4])
-        elif (df['Estrato'].iloc[i] == 1) and (df['Nodo Combinado'].iloc[i] == 2):
-            cupo.append(cupos_bi[3])
-        elif (df['Estrato'].iloc[i] in [2, 3]) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
-            cupo.append(cupos_bi[5])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [3, 4, 5, 6]):
-            cupo.append(cupos_bi[4])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [1, 2]):
-            cupo.append(cupos_bi[6])
-        elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [5, 6]):
-            cupo.append(cupos_bi[7])
-        elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [1, 2, 3, 4]):
-            cupo.append(cupos_bi[7])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
-            cupo.append(cupos_bi[1])
-        elif (df['Estrato'].iloc[i] in [1, 2, 3]) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(cupos_bi[2])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
-            cupo.append(cupos_bi[3])
-        elif (df['Estrato'].iloc[i] == 4) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(cupos_bi[4])
-        elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [11, 12, 13, 14, 15]):
-            cupo.append(cupos_bi[7])
-        elif (df['Estrato'].iloc[i] in [5, 6]) and (df['Nodo Combinado'].iloc[i] in [8, 9, 10]):
-            cupo.append(cupos_bi[7])
+            cupo.append(cupos_efg[df['Estrato'].iloc[i]])
+        elif (df['Estrato'].iloc[i] in [1, 2, 3, 4, 5, 6]) and (df['Nodo Combinado'].iloc[i] in [1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15]):
+            cupo.append(cupos_bi[df['Nodo codificado'].iloc[i]])
         else:
-            cupo.append('missing')
+            cupo.append(0)
 
     df['Nuevo Cupo'] = cupo
 
@@ -314,25 +322,3 @@ deltaTableScoring.alias('scoring') \
     }
   ) \
   .execute()
-
-# COMMAND ----------
-
-# Prepare data to write to CSV
-fnbDF = fnbDF[['Contrato','Nuevo Cupo','Nodo Combinado','Riesgo Combinado']]
-fnbDF.columns = ['contrato','cupo', 'nodo', 'riesgo']
-print('Data lista para escribir')
-
-# COMMAND ----------
-
-# Output to IO file
-# Write to blob
-fnbDF.to_csv(output, index=False)
-
-content = output.getvalue()
-
-blob_block = ContainerClient.from_connection_string(
-    conn_str=storageCS,
-    container_name="brilla-scoring"
-)
-
-blob_block.upload_blob('results.csv', content, overwrite=True, encoding='utf-8')
