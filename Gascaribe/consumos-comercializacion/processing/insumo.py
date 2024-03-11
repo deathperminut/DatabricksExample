@@ -2,21 +2,18 @@
 import os
 import pandas as pd
 import numpy as np
-from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import max as pySparkMax
-from pyspark.sql.functions import col
-from delta.tables import DeltaTable
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+from pyspark.sql import *     
+from delta.tables import *
+from prophet import Prophet
+from prophet.diagnostics import cross_validation, performance_metrics
+import itertools
+import math
 import random
-import scipy.stats as stats
-from datetime import date,datetime,timedelta
-import pytz
-import holidays
-cot_timezone = pytz.timezone('America/Bogota') # Saca el dia, teniendo en cuenta el timezone de Colombia
-today = datetime.now()
-today_cot = today.astimezone(cot_timezone).date()
-tomorrow = today + timedelta(days=1)
-today_dt = today_cot.strftime("%d-%m-%Y")
+import time
+from datetime import date,datetime,timedelta,timezone
+from pandas.api.indexers import BaseIndexer
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -25,346 +22,327 @@ warnings.filterwarnings('ignore')
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC #### **Lista de festivos**
+# MAGIC ## Funciones
 
 # COMMAND ----------
 
-years = [2018,2019,2021,2022,2023,2024]
-festivos = []
-
-for year in years:
-    colombia_holidays = holidays.Colombia(years=year)
-    festivos += [x.strftime("%Y-%m-%d") for x in colombia_holidays.keys()]
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC #### **Lista de ids de Comercializacion**
-
-# COMMAND ----------
-
-## Llenar
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC #### **Ingesta de datos**
-
-# COMMAND ----------
-
-spark = SparkSession.builder \
-    .appName("DeltaLake") \
-    .config("spark.some.config.option", "config-value") \
-    .getOrCreate()
-
-ingesta = DeltaTable.forName(spark, "analiticagdc.comercializacion.ingesta").toDF()
-estado = DeltaTable.forName(spark, "analiticagdc.comercializacion.estado").toDF()
-
-t1 = estado.groupBy("estacion").agg(pySparkMax("fecharegistro").alias("latest_fecharegistro"))
-
-estado_join = t1.alias('t1').join(estado.alias('e'), (t1.estacion == estado.estacion) & (t1.latest_fecharegistro == estado.fecharegistro),'inner').select('t1.estacion','e.estado','t1.latest_fecharegistro')
-
-
-
-df_ingesta = ingesta.toPandas()
-df_estado = estado_join.toPandas()
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC #### **Funciones de procesamiento**
-
-# COMMAND ----------
-
-def dummyDates(df):
-    # Creacion de la tabla de fechas completas por estacion
-    crossTable = pd.DataFrame(columns=['estacion','fecha'])
-    for estacion in df['estacion'].unique():
-        tempTable = pd.DataFrame(columns=['estacion','fecha'])
-        _ = df[df['estacion'] == estacion].sort_values(by='fecha',ascending=True)
-        startDate = _.head(1)["fecha"].values[0]
-        endDate = _.tail(1)["fecha"].values[0]
-        
-        dateArray = []
-
-        while startDate <= endDate:
-            dateArray.append(startDate.strftime('%Y-%m-%d'))
-            startDate += timedelta(days=1)
-
-        tempTable['fecha'] = dateArray
-        tempTable['estacion'] = [estacion]*len(dateArray)
-        
-
-        crossTable = pd.concat([tempTable,crossTable],axis=0)
-    else:
-        pass
-
-    return crossTable
-
-# COMMAND ----------
-
-def fillNaN(df):
-    newdf = pd.DataFrame(columns=df.columns)
-    for estacion in df['estacion'].unique():
-        _ = df[df['estacion'] == estacion].sort_values(by='fecha',ascending=True)
-
-        _['iddispositivo'] = _['iddispositivo'].fillna(_['iddispositivo'].mode()[0])
-        #_['id'] = _['id'].fillna(_['id'].mode()[0])
-        _['tipo'] = _['tipo'].fillna(_['tipo'].mode()[0])
-        _['volumenm3'] = _['volumenm3'].fillna(0)
-
-        newdf = pd.concat([_,newdf],axis=0)
+def completar_fechas(df):
     
-    return newdf
+    hoy = date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
+    
+    estaciones = df.groupBy("IdComercializacion", "Estacion", "TipoUsuario").agg( min("Fecha").alias("FechaMimima") )
+
+    fechas_estaciones = estaciones.alias("e") \
+              .join( DeltaTable.forName(spark, 'bigdc.comun.dimfecha').toDF().alias("f") , (col("f.Fecha") >= col("e.FechaMimima")) & (col("f.Fecha") <= lit(hoy) ), 'left' ) \
+              .withColumn( 'Festivo', when( col("TipoDia") == lit("FESTIVOS"), lit(1) ).otherwise(lit(0)) ) \
+              .withColumn( 'DiaDeS', when( col("DiaSemana") == lit("Lunes"), lit(0) )
+                                    .when( col("DiaSemana") == lit("Martes"), lit(1) )
+                                    .when( col("DiaSemana") == lit("Miércoles"), lit(2) )
+                                    .when( col("DiaSemana") == lit("Jueves"), lit(3) )
+                                    .when( col("DiaSemana") == lit("Viernes"), lit(4) )
+                                    .when( col("DiaSemana") == lit("Sábado"), lit(5) )
+                                    .when( col("DiaSemana") == lit("Domingo"), lit(6) ) )  \
+              .selectExpr(
+                  "Fecha",
+                  "DiaDeS as DiaSemana",
+                  "Festivo",
+                  "IdComercializacion",
+                  "Estacion",
+                  "TipoUsuario"
+              )
+
+    ingesta_completa = fechas_estaciones.alias("fe").join(df.alias("df"), 
+                                                      (col("fe.IdComercializacion") == col("df.IdComercializacion")) & 
+                                                      (col("fe.Fecha") == col("df.Fecha")), 'left'  ) \
+                                                .withColumn( 'Volumen_', when(col("df.Volumen").isNull(), lit(0)).otherwise(col("df.Volumen"))  )  \
+                                                .selectExpr(
+                                                    "fe.*",
+                                                    "Volumen_ as Volumen"
+                                                )
+                        
+    return ingesta_completa
 
 # COMMAND ----------
 
-def process_inputs(df,today=today_dt):
+def criterio_estado(df, ventana=30):
+    
+    hoy =  date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
+    hace_n_dias =  date_sub(hoy, ventana-1)
+    
+    estaciones_fechas = df
+
+    estado_estaciones_ = estaciones_fechas.alias("v") \
+     .groupBy("IdComercializacion", "Estacion", "TipoUsuario") \
+     .agg(
+      min( col("v.Fecha") ).alias("PrimeraFecha"),
+      min( when( (estaciones_fechas.Volumen != 0) & (estaciones_fechas.Fecha >= lit(hace_n_dias)), estaciones_fechas.Fecha ).otherwise( lit( date_add(hoy, 1) ) ) ).alias("PrimeraFechaConTrasmision"),
+      sum( when( (col("v.Volumen") == 0) & (estaciones_fechas.Fecha >= lit(hace_n_dias) ), lit(1)  ).otherwise(lit(0)) ).alias("DiasSinTrasmisionV") ) \
+    .withColumn( 'DiasSeguidosSinTrasmision', date_diff( "PrimeraFechaConTrasmision", lit(hace_n_dias) ) ) \
+    .withColumn( 'DiasCompletacionVentana2', lit(ventana) - col("DiasSeguidosSinTrasmision") ) \
+    .withColumn( 'PorcentajeConsumoV', (lit(ventana) - col("DiasSinTrasmisionV"))/lit(ventana) ) \
+    .withColumn( 'Hoy',  lit(hoy) ) \
+    .withColumn( 'Hace_30', lit(hace_n_dias) ) \
+    .withColumn( 'FechaInicialVentana2', when( (col("DiasCompletacionVentana2") > 0) & (col("DiasCompletacionVentana2") < 
+                lit(ventana)), date_sub( lit(hace_n_dias), col("DiasCompletacionVentana2") ) ).otherwise(lit(None)) ) \
+    .withColumn( 'DST_estaciones_recien_aparecidas', when( col("PrimeraFecha") > col("FechaInicialVentana2"), lit 
+                     (ventana) ).otherwise(lit(None)) )
+    
+
+    estado_estaciones_pot_nuevas = estaciones_fechas.alias("v") \
+        .join( estado_estaciones_.alias("ee"), (col("ee.IdComercializacion") == col("v.IdComercializacion")) & (col("ee.FechaInicialVentana2").isNotNull()), 'inner' ) \
+        .groupBy("v.IdComercializacion", "v.Estacion") \
+        .agg( sum( when( (col("v.Volumen") == 0) & (estaciones_fechas.Fecha < col("ee.PrimeraFechaConTrasmision")) & (estaciones_fechas.Fecha >= col("FechaInicialVentana2") ), lit(1)  ).otherwise(lit(0)) ).alias("DiasSinTrasmisionV2_") ) 
+        
+
+    estado_estaciones =  estado_estaciones_.alias("ee") \
+        .join( estado_estaciones_pot_nuevas.alias("een"), (col("een.IdComercializacion") == col("ee.IdComercializacion")), 'left' ) \
+        .withColumn( 'DiasSinTrasmisionV2', when(col("ee.DST_estaciones_recien_aparecidas").isNull(),col("een.DiasSinTrasmisionV2_") ).otherwise(col("DST_estaciones_recien_aparecidas")) ) \
+        .selectExpr( "ee.*", "DiasSinTrasmisionV2" ) \
+        .withColumn( 'Estado', when( (col("DiasSinTrasmisionV2").isNull()) & (col("DiasSeguidosSinTrasmision") >= lit 
+                         (ventana)) , lit("NO ACTIVA") )
+                         .when( (col("DiasSinTrasmisionV2").isNull()) & (col("DiasSeguidosSinTrasmision") < lit(ventana)) , lit("ACTIVA") )
+                         .when( col("DiasSinTrasmisionV2") < lit(ventana) , lit("ACTIVA") ) 
+                         .when( col("DiasSinTrasmisionV2") == lit(ventana) , lit("NUEVA") ) )
+    
+                            
+    return estado_estaciones
+
+# COMMAND ----------
+
+def primera_fecha_efectiva(df, n=30):
+   
+    hoy =  date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
+    
+    # Creación de ventanas
+    # Ventana para calcular las ventanas de inactividad
+    window1 = Window.partitionBy("IdComercializacion").orderBy("Fecha").rowsBetween(-n, -1)
+    # Ventana para filtrar la última fecha de la ultima ventana de inactividad
+    window2 = Window.partitionBy("IdComercializacion").orderBy("Diferencia")
+
+    # columna que contenga la suma acumulativa de valores cero dentro de la ventana
+    df_ = df.withColumn("zero_sum", sum(col("Volumen")).over(window1))
+    
+    # Fecha minima global, para complementar estaciones que no tengas oasis de inactividad
+    fecha_minima = df.groupBy( "IdComercializacion", "Estado", "Estacion", "TipoUsuario" ) \
+    .agg( min(col("Fecha")).alias("FechaMinima") )
+
+    # Encontrar el último valor de la última ventana de tamaño n con valores cero
+    ultima_ventana = df_.filter( (col("zero_sum") == 0) & (col("Volumen") != 0) ) \
+    .withColumn( 'Diferencia', date_diff(lit(hoy), col("Fecha")) ) \
+    .withColumn( 'RN', row_number().over(window2) ) \
+    .filter(  col("RN") == 1  )
+    
+    # Calculo de la primera fecha efectiva comparando el ultima valor de la ultima ventana con la primera fecha
+    primeras_fechas_efectivas = fecha_minima.alias("fm") \
+    .join( ultima_ventana.alias("uv"), col("fm.IdComercializacion") == col("uv.IdComercializacion") , "left" ) \
+    .withColumn( 'PrimeraFechaEfectiva', when( col("uv.Fecha").isNull(), col("fm.FechaMinima") )
+                                        .otherwise(col("uv.Fecha")) ) \
+    .selectExpr( "fm.IdComercializacion", "fm.Estacion", "fm.TipoUsuario", "fm.Estado", "PrimeraFechaEfectiva" )
+
+    # Union de la primera fecha en el dataframe de insumo
+    insumo = df.alias("d") \
+        .join( primeras_fechas_efectivas.alias("pfe"), col("d.IdComercializacion") == col("pfe.IdComercializacion") , "left" ) \
+        .selectExpr( "d.*", "pfe.PrimeraFechaEfectiva" )    
+
+    
+
+    return insumo
+
+# COMMAND ----------
+
+def prophet_filter_(df,n1=30,n2=15, n=4):
     df = df.copy()
+    df['ds'] = df['Fecha']
+    df['y'] = df['Volumen']
+    new_df = pd.DataFrame()
 
-    df = df[df['fecha'] < today_cot]
-    # Reemplazar los IdDispositivo por los ids
-    #df['id'] = df['iddispositivo'].map(map_new_ids)
+    class CustomIndexer(BaseIndexer):
+        def get_window_bounds(self, num_values, min_periods, center, closed, step):
+            start = np.empty(num_values, dtype=np.int64)
+            end = np.empty(num_values, dtype=np.int64)
+            for i in range(num_values):
+                #start[i] = i#
+                #end[i] = i+1#(((i//self.window_size)+1)*self.window_size)-1
 
-    # Creacion de tabla de fechas completas por estacion
-    crossTable = dummyDates(df)
+                start[i] = (i//(self.window_size))*(self.window_size)
+                end[i] = np.min( [(start[i] + self.window_size), num_values-1] )
 
-    # Reemplazar las fechas::str por fechas::datetime
-    df['fecha'] = pd.to_datetime(df['fecha'])
-    crossTable['fecha'] = pd.to_datetime(crossTable['fecha'])
-
-    # JOIN las dos tablas anteriores
-    df = crossTable.merge(df,how='left',on=['estacion','fecha'])
-
-    # Crear el flag de festivos
-    festivosBin = []
-    for fecha in df['fecha']:
-        if str(fecha) in festivos:
-            festivosBin.append(1)
-        else:
-            festivosBin.append(0)
-            
-    df['festivos'] = festivosBin
-
-    # Crear la columna de dias de semana
-    df['diadesemana'] = df['fecha'].apply(lambda x: x.dayofweek)
-
-    # Crear el 8vo dia de la semana
-    for i,festivo in enumerate(df['festivos']):
-        if festivo == 1:
-            df['diadesemana'][i] = 8
-        else:
-            pass
-
-    # Reemplazar los valores NaN:
-    # IdDispositivo: Moda
-    # id: Moda
-    # Tipo: Moda
-    # VolumenM3: 0
-    df = fillNaN(df)
-
-    df['volumenm3'] = df['volumenm3'].astype('float')
-    df['festivos'] = df['festivos'].astype('int')
-    #df['id'] = df['id'].astype('int')
-
-    df = df.drop(['iddispositivo','tipo'],axis=1)
-
-    return df
-
-# COMMAND ----------
-
-X = process_inputs(df_ingesta)
-
-# COMMAND ----------
-
-# Esta funcion deberia detectar si en los ultimos nDaysNew, la estacion ha tenido mas de percentage*nDaysNew dias 
-# con consumos en 0. Si tiene percentage*nDaysNew o mas dias en 0, se le deberia agregar un flag de inactividad.
-def active_station_criterion(df,estados,nDaysNew=15,percentage=0.9):
-    df = df.copy()
-    df_activas = estados[estados['estado'] == 'Activa']
-
-    minDays = int(nDaysNew*percentage)
-    estacionesStatus = {}
-    estaciones = df_activas['estacion'].unique()
-
-    for estacion in estaciones:
-        vol_array = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
-
-        len_vol_array = (len(vol_array))
-
-        count = 0
-        for vol in vol_array:
-            if vol == 0:
-                count += 1
+            return start, end
         
-        if (count >= minDays) or (len_vol_array < 15):
-            estacionesStatus[estacion] = 'Inactiva'
-        else:
-            estacionesStatus[estacion] = 'Activa'
-
+    def sd_my(x):
+        return np.sqrt( x.sum()/(len(x) - 1) )
     
-    estacion = []
-    estado = []
-    for key,value in estacionesStatus.items():
-        estacion.append(key)
-        estado.append(value)
     
-    status_dict = {}
-    status_dict['estacion'] = estacion
-    status_dict['estado'] = estado
-    status_dict['fecharegistro'] = today_cot
+    for est in df['Estacion'].unique():
 
-    status_df = pd.DataFrame(status_dict)
+        condition = np.where( (df['IdComercializacion'] == est) & (df['Festivo'] == 1) )
+        holidays = df.loc[condition].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'Volumen']]
+        holidays['holiday'] = 'Festivo'
+        holidays = holidays[['holiday', 'Fecha']]
+        holidays.columns = ['holiday', 'ds']
+        holidays['ds'] = pd.to_datetime(holidays['ds'])
+        _ = df[(df['Estacion'] == est)]
+        _['ds'] = pd.to_datetime(_['ds'])
+        model = Prophet(changepoint_prior_scale = 0.5 , holidays = holidays)
+        model.fit(_[['ds','y']])
 
-    #newdf = df.merge(status_df[['estacion','estado']],how='left',on='estacion')
+        future = model.make_future_dataframe(periods=0)
+        forecast = model.predict(future)
+        temporary_df = _.merge(forecast,how='left',on='ds')
+
+        temporary_df['deviationsq'] = (temporary_df['y'] - temporary_df['trend'])*(temporary_df['y'] - temporary_df['trend'])
+        temporary_df['deviation'] = (temporary_df['y'] - temporary_df['trend'])
+        indexer = CustomIndexer(window_size=n1)
+        indexer2 = CustomIndexer(window_size=n2)
+        temporary_df['standar_deviation1'] = temporary_df['deviationsq'].rolling(indexer,  min_periods=1).apply(sd_my)
+        temporary_df['standar_deviation2'] = temporary_df['deviationsq'].rolling(indexer2,  min_periods=1).apply(sd_my)
+        temporary_df['outlier_flag'] = np.where( ( ( temporary_df['y'] > temporary_df['yhat_upper'] ) | ( temporary_df['y'] < temporary_df['yhat_lower'] ) ) & ( (1.5*temporary_df['standar_deviation1']) < (np.abs(temporary_df['deviation']))  ) & ( (1.5*temporary_df['standar_deviation2']) < (np.abs(temporary_df['deviation'])) ), True , False )
+        
+        temporary_df['y_corregido'] = None
+
+        for i in range(len(temporary_df)):
+            if temporary_df['outlier_flag'][i]:
+                if temporary_df['trend'][i] >= 0:
+                    temporary_df['y_corregido'][i] = temporary_df['trend'][i] 
+                else: 
+                    temporary_df['y_corregido'][i] = 0
+
+            else:
+                temporary_df['y_corregido'][i] = temporary_df['y'][i]
 
         
-
-    return status_df
-
-# COMMAND ----------
-
-status_active_df = active_station_criterion(X,df_estado)
-
-# COMMAND ----------
-
-def new_station_criterion(df,estados,nDaysNew=30,percentage=0.9):
-    df = df.copy()
-    df_inactivas = estados[estados['estado'] == 'Inactiva']
-
-    minDays = int(nDaysNew*percentage) # 30*0.9 = 27
-    maxNumCount = nDaysNew - minDays # 30 - 27 = 3 (numero maximo de 0s)
-    estacionesStatus = {}
-    estaciones = df_inactivas['estacion'].unique()
-
-    for estacion in estaciones:
-        vol_array = df[df['estacion'] == estacion].reset_index(drop=True).tail(nDaysNew)['volumenm3'].values
-        
-        len_vol_array = len(vol_array)
-
-        count = 0
-        for vol in vol_array:
-            if vol == 0:
-                count += 1
-        #print(count)
-        if (count >= maxNumCount) or (len_vol_array < 30):
-            estacionesStatus[estacion] = 'Nueva'
-        else:
-            estacionesStatus[estacion] = 'Activa'
-
-    estacion = []
-    estado = []
-    for key,value in estacionesStatus.items():
-        estacion.append(key)
-        estado.append(value)
-    
-    status_dict = {}
-    status_dict['estacion'] = estacion
-    status_dict['estado'] = estado
-    status_dict['fecharegistro'] = today_cot
-
-    status_df = pd.DataFrame(status_dict)
-
-    return status_df
         
 
-# COMMAND ----------
+        new_df = pd.concat([temporary_df,new_df],axis=0)
 
-status_inactive_df = new_station_criterion(X,df_estado)
 
-# COMMAND ----------
-
-status_df = pd.concat([status_active_df,status_inactive_df],axis=0)
-
-# COMMAND ----------
-
-def hampel_filter(df,window_size,n=4,num_devs=3.0):
     
-    cols = list(df.columns) + ['consumocorregido']
-    newdf = pd.DataFrame(columns=cols)
-
-    #tomorrow_day = tomorrow.weekday()
-
-    estaciones = df['estacion'].unique()
-    for estacion in estaciones:
-        dataDF = df[df['estacion'] == estacion].fillna(0).reset_index(drop=True)
-        data = np.array(dataDF['volumenm3'])
-
-        filtered_data = data.copy()
-        
-
-        for i in range(len(data)):
-            lower_bound = max(0, i - window_size)
-            upper_bound = min(len(data), i + window_size)
-
-            window = data[lower_bound:upper_bound]
-            median = np.median(window)
-            mad = np.median(np.abs(window - median))
-            threshold = num_devs * 1.4826 * mad  # Factor of 1.4826 makes the MAD scale estimate consistent with std deviation
-
-            if np.abs(data[i] - median) > threshold:
-                day = dataDF.iloc[i]['diadesemana']
-                listOfValues = list(dataDF[dataDF['diadesemana'] == day].tail(n)['volumenm3'])
-                meanValues = sum(listOfValues)/n
-                #print(meanValues)
-                filtered_data[i] = meanValues
-                #print(f'Indice reemplazado: {i}')
-
-        dataDF['consumocorregido'] = filtered_data
-
-        newdf = pd.concat([dataDF,newdf],axis=0)
-
-    return newdf
-    
-
-# COMMAND ----------
-
-X = hampel_filter(X,window_size=100)
-
-# COMMAND ----------
-
-status_df[status_df['estacion'] == 'CARTON COLOMBIA(MOLINO 5)']
+    return new_df
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC #### **Escritura de datos en el DeltaLake**
+# MAGIC ## Procedimientos Insumo y DimEstado
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE TABLE IF NOT EXISTS analiticagdc.comercializacion.insumo (
+# MAGIC   Fecha                   date,
+# MAGIC   DiaSemana               int,
+# MAGIC   Festivo                 int,
+# MAGIC   IdComercializacion      int,
+# MAGIC   Estacion                varchar(100),   
+# MAGIC   TipoUsuario             varchar(100),
+# MAGIC   Volumen                 float,
+# MAGIC   VolumenCorregido        float,
+# MAGIC   deviation               float,
+# MAGIC   standar_deviation1      float,
+# MAGIC   standar_deviation2      float,
+# MAGIC   Estado                  varchar(20),
+# MAGIC   PrimeraFechaEfectiva    date
+# MAGIC )
+
+# COMMAND ----------
+
+ingesta = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta').toDF()
+dimestado = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado').toDF()
+
+# COMMAND ----------
+
+estaciones_fechas = completar_fechas(ingesta)
+estado_estaciones = criterio_estado(estaciones_fechas, ventana=30)
+
+insumo_sin_primeras_fechas = estaciones_fechas.alias("ef") \
+.join( estado_estaciones.alias("ee"), col("ee.IdComercializacion") == col("ef.IdComercializacion"), 'left' ) \
+.selectExpr( "ef.*", "ee.Estado" )
+
+insumo_sin_filtro_ = primera_fecha_efectiva(insumo_sin_primeras_fechas, n=30)
+insumo_sin_filtro = insumo_sin_filtro_.filter( col("Fecha") >= col("PrimeraFechaEfectiva") )
+
+# COMMAND ----------
+
+df_pd = insumo_sin_filtro.toPandas()
+insumo_filtro = prophet_filter_(df_pd)
+insumo_filtro = insumo_filtro[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
+
+# COMMAND ----------
+
+estados = estado_estaciones.alias("ee") \
+.join( dimestado.alias("de"), (col("ee.IdComercializacion") == col("de.IdComercializacion")) & (col("de.is_current") == 1), 'left' ) \
+.withColumn( 'Operacion', when( (col("de.Estado").isNull()), lit("INSERTAR") )
+                         .when( (col("ee.Estado") != col("de.Estado")), lit("ACTUALIZAR") )  ) \
+.withColumn( 'is_current', lit(True) ) \
+.selectExpr( "ee.*", "Operacion", "de.Estado as ViejoEstado", "de.FechaRegistro", "is_current" )
+
+# COMMAND ----------
+
+display(estados.filter( col("IdComercializacion") == 471 ))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Merge tabla Insumo
 
 # COMMAND ----------
 
 schema = StructType([
-    StructField("estacion", StringType(), True),
-    StructField("fecha", DateType(), True),
-    StructField("volumenm3", FloatType(), True),
-    StructField("festivos", IntegerType(), True),
-    StructField("diadesemana", IntegerType(), True),
-    StructField("consumocorregido", FloatType(), True)
+    StructField("Fecha", DateType(), True),
+    StructField("DiaSemana", IntegerType(), True),
+    StructField("Festivo", IntegerType(), True),
+    StructField("IdComercializacion", IntegerType(), True),
+    StructField("Estacion", StringType(), True),
+    StructField("TipoUsuario", StringType(), True),
+    StructField("Volumen", FloatType(), True),
+    StructField("VolumenCorregido", FloatType(), True),
+    StructField("deviation", FloatType(), True),
+    StructField("standar_deviation1", FloatType(), True),
+    StructField("standar_deviation2", FloatType(), True),
+    StructField("Estado", StringType(), True),
+    StructField("PrimeraFechaEfectiva", DateType(), True),
     ])
-df = spark.createDataFrame(X, schema = schema)
 
-deltaTable = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo')
+insumo_filtro_sdf = spark.createDataFrame(insumo_filtro, schema = schema)
 
-deltaTable.alias("t").merge(
-    df.alias("s"),
-    "t.estacion = s.estacion AND t.fecha = s.fecha AND t.volumenm3 = s.volumenm3"
-).whenNotMatchedInsertAll().execute()
+insumo_filtro_sdf.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.insumo")
 
 # COMMAND ----------
 
-schema = StructType([
-    StructField("estacion", StringType(), True),
-    StructField("estado", StringType(), True),
-    StructField("fecharegistro", DateType(), True)
-    ])
-df = spark.createDataFrame(status_df, schema = schema)
-
-deltaTable = DeltaTable.forName(spark, 'analiticagdc.comercializacion.estado')
-
-deltaTable.alias("t").merge(
-    df.alias("s"),
-    "t.estacion = s.estacion AND t.estado = s.estado AND t.fecharegistro = s.fecharegistro"
-).whenNotMatchedInsertAll().execute()
+# MAGIC %md
+# MAGIC ## Merge Tabla DimEstado
 
 # COMMAND ----------
 
+deltaTable_dimestado = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado')
 
+insertar =  {
+              "IdComercializacion"  : "df.IdComercializacion",
+              "Estacion"            : "df.Estacion",
+              "Estado"              : "df.Estado",
+              "FechaRegistro"       : from_utc_timestamp(current_timestamp(), 'GMT-5'),
+              "is_current"          : lit(True)
+    }
+
+actualizar_0 =  {
+              "IdComercializacion"  : "df.IdComercializacion",
+              "Estacion"            : "df.Estacion",
+              "Estado"              : "df.Estado",
+              "FechaRegistro"       : "df.FechaRegistro",
+              "is_current"          : lit(False)
+    }
+
+
+deltaTable_dimestado.alias('t') \
+  .merge( estados.filter("Operacion = 'ACTUALIZAR'").alias('df'), 't.IdComercializacion = df.IdComercializacion AND t.is_current = True') \
+  .whenMatchedUpdate(set=actualizar_0) \
+  .execute()
+
+deltaTable_dimestado.alias('t') \
+  .merge( estados.filter("Operacion = 'ACTUALIZAR'").alias('df'), 't.IdComercializacion = df.IdComercializacion AND t.is_current = df.is_current') \
+  .whenNotMatchedInsert(values=insertar) \
+  .execute()
+
+deltaTable_dimestado.alias('t') \
+  .merge( estados.filter("Operacion = 'INSERTAR'").alias('df'), 'False') \
+  .whenNotMatchedInsert(values=insertar) \
+  .execute()

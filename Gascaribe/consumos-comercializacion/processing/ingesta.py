@@ -2,9 +2,10 @@
 import os
 import pandas as pd
 import numpy as np
-from pyspark.sql.types import StructType, StructField, IntegerType, FloatType, StringType, DateType
-from pyspark.sql import SparkSession
-from delta.tables import DeltaTable
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+from pyspark.sql import *
+from delta.tables import *
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -12,73 +13,56 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-dwDatabase = dbutils.secrets.get(scope='gascaribe', key='dwh-name')
-dwServer = dbutils.secrets.get(scope='gascaribe', key='dwh-host')
-dwUser = dbutils.secrets.get(scope='gascaribe', key='dwh-user')
-dwPass = dbutils.secrets.get(scope='gascaribe', key='dwh-pass')
-dwJdbcPort = dbutils.secrets.get(scope='gascaribe', key='dwh-port')
-dwJdbcExtraOptions = ""
-sqlDwUrl = "jdbc:sqlserver://" + dwServer + ".database.windows.net:" + dwJdbcPort + ";database=" + dwDatabase + ";user=" + dwUser + ";password=" + dwPass + ";" + dwJdbcExtraOptions
-storage_account_name = dbutils.secrets.get(scope='gascaribe', key='bs-name')
-blob_container = dbutils.secrets.get(scope='gascaribe', key='bs-container')
-blob_storage = storage_account_name + ".blob.core.windows.net"
-config_key = "fs.azure.account.key."+storage_account_name+".blob.core.windows.net"
-blob_access_key = dbutils.secrets.get(scope='gascaribe', key='bs-access-key')
-spark.conf.set(config_key, blob_access_key)
+spark.sql("""
+CREATE TABLE IF NOT EXISTS analiticagdc.comercializacion.ingesta (
+  IdComercializacion int,
+  Estacion           varchar(100),
+  TipoUsuario        varchar(50),
+  IdDispositivo      varchar(15),
+  Fecha              date,
+  Volumen            float
+)
+"""
+)
 
 # COMMAND ----------
 
-query = 'SELECT * FROM ComercializacionML.DatosEDA'
-
-df = spark.read \
-    .format("com.databricks.spark.sqldw") \
-    .option("url", sqlDwUrl) \
-    .option("tempDir", "wasbs://" + blob_container + "@" + storage_account_name + ".blob.core.windows.net/") \
-    .option("forwardSparkAzureStorageCredentials", "true") \
-    .option("maxStrLength", "1024" ) \
-    .option("query", query) \
-    .load()
-
-rawData = df.toPandas()
+volumenes = DeltaTable.forName(spark, 'analiticagdc.comercializacion.factvolumen').toDF()
+estaciones = DeltaTable.forName(spark, 'production.comercializacion.estaciones').toDF()
 
 # COMMAND ----------
 
-def processing_inputs(df):
-    df = df.copy()
-
-    # Borrar columna Red de la tabla
-    df = df.drop('Red',axis=1)
-
-    # Renombrar columnas
-    df.columns = ['iddispositivo','estacion','tipo','fecha','volumenm3']
-    # Reordenar columnas
-    df = df[['estacion','iddispositivo','tipo','fecha','volumenm3']]
-
-    # Reemplazar valores 0E-8 por 0
-    df['volumenm3'] = df['volumenm3'].apply(lambda x: 0 if x == 0E-8 else x)
-
-    df['volumenm3'] = df['volumenm3'].astype('float')
-
-    return df
+ingesta = volumenes.alias("v") \
+.join(estaciones.alias("e"), col("v.IdComercializacion") == col("e.Id"), 'left') \
+.selectExpr( "v.IdComercializacion",
+             "descripcion as Estacion",
+             "tipo_usuario as TipoUsuario",
+             "id_electrocorrector as IdDispositivo",
+             "Fecha",
+             "Volumen")
 
 # COMMAND ----------
 
-X = processing_inputs(rawData)
+deltaTable_ingesta = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta')
+
+mapping =  {
+              "IdComercializacion"  : "df.IdComercializacion",
+              "Estacion"            : "df.Estacion",
+              "TipoUsuario"         : "df.TipoUsuario",
+              "IdDispositivo"       : "df.IdDispositivo",
+              "Fecha"               : "df.Fecha",
+              "Volumen"             : "df.Volumen"
+    }
+
+deltaTable_ingesta.alias('t') \
+  .merge( ingesta.alias('df'), 't.IdComercializacion = df.IdComercializacion AND t.Fecha = df.Fecha') \
+  .whenMatchedUpdate(set=mapping) \
+  .whenNotMatchedInsert(values=mapping) \
+  .execute()
 
 # COMMAND ----------
 
-schema = StructType([
-    StructField("estacion", StringType(), True),
-    StructField("iddispositivo", StringType(), True),
-    StructField("tipo", StringType(), True),
-    StructField("fecha", DateType(), True),
-    StructField("volumenm3", FloatType(), True)
-    ])
-df = spark.createDataFrame(X, schema = schema)
-
-deltaTable = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta')
-
-deltaTable.alias("t").merge(
-    df.alias("s"),
-    "t.estacion = s.estacion AND t.fecha = s.fecha AND t.volumenm3 = s.volumenm3"
-).whenNotMatchedInsertAll().execute()
+# MAGIC %sql 
+# MAGIC SELECT * 
+# MAGIC FROM analiticagdc.comercializacion.ingesta
+# MAGIC WHERE IdComercializacion = 166
