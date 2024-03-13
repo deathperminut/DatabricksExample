@@ -59,10 +59,3 @@ deltaTable_ingesta.alias('t') \
   .whenMatchedUpdate(set=mapping) \
   .whenNotMatchedInsert(values=mapping) \
   .execute()
-
-# COMMAND ----------
-
-# MAGIC %sql 
-# MAGIC SELECT * 
-# MAGIC FROM analiticagdc.comercializacion.ingesta
-# MAGIC WHERE IdComercializacion = 166

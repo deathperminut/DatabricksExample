@@ -257,14 +257,30 @@ insumo_sin_primeras_fechas = estaciones_fechas.alias("ef") \
 .join( estado_estaciones.alias("ee"), col("ee.IdComercializacion") == col("ef.IdComercializacion"), 'left' ) \
 .selectExpr( "ef.*", "ee.Estado" )
 
-insumo_sin_filtro_ = primera_fecha_efectiva(insumo_sin_primeras_fechas, n=30)
-insumo_sin_filtro = insumo_sin_filtro_.filter( col("Fecha") >= col("PrimeraFechaEfectiva") )
+insumo_sin_filtro_ = primera_fecha_efectiva(insumo_sin_primeras_fechas, n=30) \
+    .filter( col("Fecha") >= col("PrimeraFechaEfectiva") )
+
+
+estaciones_1registro = insumo_sin_filtro_.groupBy(col("IdComercializacion")).agg( count(col("IdComercializacion")).alias("Cuenta") ).filter( col("Cuenta") == 1 ).selectExpr( 'IdComercializacion' )
+
+
+insumo_sin_filtro = insumo_sin_filtro_.filter( ~( col("IdComercializacion").isin( estaciones_1registro.rdd.flatMap(lambda x: x).collect() ) ) ) 
+insumo_estacion_1registro = insumo_sin_filtro_.filter( ( col("IdComercializacion").isin( estaciones_1registro.rdd.flatMap(lambda x: x).collect() ) ) ) 
 
 # COMMAND ----------
 
 df_pd = insumo_sin_filtro.toPandas()
-insumo_filtro = prophet_filter_(df_pd)
-insumo_filtro = insumo_filtro[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
+df_1registro = insumo_estacion_1registro.toPandas()
+insumo_filtro_ = prophet_filter_(df_pd)
+df_1registro['y_corregido'] = df_1registro['Volumen']
+df_1registro['deviation'] = 0
+df_1registro['standar_deviation1'] = 0
+df_1registro['standar_deviation2'] = 0
+
+df_1registro = df_1registro[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
+insumo_filtro_ = insumo_filtro_[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
+
+insumo_filtro = pd.concat([insumo_filtro_,df_1registro],axis=0)
 
 # COMMAND ----------
 
