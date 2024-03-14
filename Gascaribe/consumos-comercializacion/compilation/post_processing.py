@@ -40,6 +40,7 @@ warnings.filterwarnings('ignore')
 mediapredictions = DeltaTable.forName(spark, 'analiticagdc.comercializacion.mediapredictions').toDF()
 prophetpredictions_ = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophetpredictions').toDF()
 real_values = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta').toDF()
+estaciones = DeltaTable.forName(spark, 'production.comercializacion.estaciones').toDF()
 
 estaciones_media = DeltaTable.forName(spark, 'analiticagdc.comercializacion.mediapredictions').toDF() \
     .selectExpr( 'IdComercializacion' ).drop_duplicates()
@@ -47,15 +48,21 @@ estaciones_media = DeltaTable.forName(spark, 'analiticagdc.comercializacion.medi
 
 prophetpredictions = prophetpredictions_.filter( ~(col("IdComercializacion").isin( estaciones_media.rdd.flatMap(lambda x: x).collect() ) ) )
 
-predictions = prophetpredictions.union(mediapredictions)
+predictions_ = prophetpredictions.union(mediapredictions)
+predictions = predictions_.alias("p") \
+    .join(estaciones.alias("e"), col("p.IdComercializacion") == col("e.Id"), "left") \
+    .selectExpr( 'p.*', 
+                 'descripcion as Estacion',
+                 'tipo_usuario as TipoUsuario',
+                 'id_electrocorrector as IdDispositivo')
 
 results =  predictions.alias("p") \
     .join( real_values.alias("rv"), (col("p.IdComercializacion") == col("rv.IdComercializacion")) & (col("p.Fecha") == col("rv.Fecha")), 'left'  ) \
     .withColumn( 'Error', abs( col("p.Prediccion") - col("rv.Volumen") )/col("rv.Volumen") )  \
     .selectExpr( 'p.IdComercializacion',
-                 'rv.Estacion',
-                 'rv.IdDispositivo',
-                 'rv.TipoUsuario',
+                 'p.Estacion',
+                 'p.IdDispositivo',
+                 'p.TipoUsuario',
                  'p.Modelo',
                  'p.Fecha',
                  'rv.Volumen',

@@ -32,9 +32,9 @@ def prophet_forecast(df, parametros):
     parametros = parametros.copy()
     prophet_forecast = []
 
-    try:
+    for idcomercializacion in df['IdComercializacion'].unique():
 
-        for idcomercializacion in df['IdComercializacion'].unique():
+        try:
             
             prophetdf = df[df['IdComercializacion'] == idcomercializacion].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'VolumenCorregido']]
             prophetdf.columns = ['ds', 'y']
@@ -45,9 +45,8 @@ def prophet_forecast(df, parametros):
             holidays = holidays[['holiday', 'Fecha']]
             holidays.columns = ['holiday', 'ds']
             holidays['ds'] = pd.to_datetime(holidays['ds'])
-
+            
             parameters = parametros[parametros['IdComercializacion'] == idcomercializacion].reset_index(drop=True)
-
             changepoint_parameter = parameters['Changepoint_prior_scale'].values[0]
 
 
@@ -61,7 +60,7 @@ def prophet_forecast(df, parametros):
                                 'Modelo': 'Prophet',
                                 'Fecha': forecast['ds'].iloc[-1],
                                 'Prediccion': forecast['prediccion'].iloc[-1] })
-    except Exception as e:
+        except Exception as e:
 
             prophet_forecast.append({
                                 'IdComercializacion': idcomercializacion,
@@ -91,7 +90,7 @@ def prophet_forecast(df, parametros):
 
 # COMMAND ----------
 
-insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF()
+insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF() 
 parametros = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
     .filter( col("is_current") == lit(True))
 insumo_pd = insumo.toPandas()
