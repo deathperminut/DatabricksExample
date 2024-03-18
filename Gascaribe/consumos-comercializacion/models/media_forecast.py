@@ -254,14 +254,19 @@ def media_forecast(df, media_parameters, n=4):
 insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF() 
 
 estaciones_mal_portadas = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
-    .filter( col("Metric2") < 0.4 ).selectExpr( 'IdComercializacion' )
+    .filter( (col("Metric2") < 0.4) & (col("is_current") == 1) ).selectExpr( 'IdComercializacion' )
 estaciones_mal_portadas_pd = estaciones_mal_portadas.toPandas()
 
-fecha_ultimo_tuneo_prophet = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
-.filter( col("is_current") == lit(True) ).groupBy().agg( max(col("FechaRegistro"))  ).collect()[0][0]
+
+fechas_tuneo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
+.selectExpr( 'FechaRegistro' ).dropDuplicates().orderBy(desc(col('FechaRegistro')))
+fecha_ultimo_tuneo_prophet = fechas_tuneo.collect()[0][0] 
+fecha_penultimo_tuneo_prophet = fechas_tuneo.collect()[1][0] 
+
 estaciones_nuevas_hasta_ultima_tunning_prophet = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado').toDF() \
     .filter( ( (col("Estado") == 'NUEVA') & (col("is_current") == lit(True)) ) 
-             | ( (col("Estado") == 'NUEVA') & (col("FechaRegistro") <= fecha_ultimo_tuneo_prophet) ) ).selectExpr( 'IdComercializacion' )
+             | ( (col("Estado") == 'NUEVA') & (col("FechaRegistro") <= fecha_ultimo_tuneo_prophet)
+                & (col("FechaRegistro") >= fecha_penultimo_tuneo_prophet) ) ).selectExpr( 'IdComercializacion' )
 estaciones_nuevas_hasta_ultima_tunning_prophet_pd = estaciones_nuevas_hasta_ultima_tunning_prophet.toPandas()
 
 insumo_pd = insumo.toPandas()

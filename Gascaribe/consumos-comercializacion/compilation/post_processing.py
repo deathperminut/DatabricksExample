@@ -42,8 +42,20 @@ prophetpredictions_ = DeltaTable.forName(spark, 'analiticagdc.comercializacion.p
 real_values = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta').toDF()
 estaciones = DeltaTable.forName(spark, 'production.comercializacion.estaciones').toDF()
 
-estaciones_media = DeltaTable.forName(spark, 'analiticagdc.comercializacion.mediapredictions').toDF() \
-    .selectExpr( 'IdComercializacion' ).drop_duplicates()
+estaciones_mal_portadas = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
+    .filter( (col("Metric2") < 0.4) & (col("is_current") == 1) ).selectExpr( 'IdComercializacion' )
+
+fechas_tuneo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
+.selectExpr( 'FechaRegistro' ).dropDuplicates().orderBy(desc(col('FechaRegistro')))
+fecha_ultimo_tuneo_prophet = fechas_tuneo.collect()[0][0] 
+fecha_penultimo_tuneo_prophet = fechas_tuneo.collect()[1][0] 
+
+estaciones_nuevas_hasta_ultima_tunning_prophet = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado').toDF() \
+    .filter( ( (col("Estado") == 'NUEVA') & (col("is_current") == lit(True)) ) 
+             | ( (col("Estado") == 'NUEVA') & (col("FechaRegistro") <= fecha_ultimo_tuneo_prophet)
+                & (col("FechaRegistro") >= fecha_penultimo_tuneo_prophet) ) ).selectExpr( 'IdComercializacion' )
+
+estaciones_media = estaciones_nuevas_hasta_ultima_tunning_prophet.union(estaciones_mal_portadas).drop_duplicates()
 
 
 prophetpredictions = prophetpredictions_.filter( ~(col("IdComercializacion").isin( estaciones_media.rdd.flatMap(lambda x: x).collect() ) ) )
@@ -67,7 +79,7 @@ results =  predictions.alias("p") \
                  'p.Fecha',
                  'rv.Volumen',
                  'p.Prediccion',
-                 'Error'  )
+                 'Error'  ).filter( col('Fecha') > fecha_ultimo_tuneo_prophet )
 
 
 # COMMAND ----------

@@ -26,21 +26,22 @@ warnings.filterwarnings('ignore')
 
 # COMMAND ----------
 
-def cuttof_maker(number_days = 15):
-    today = datetime.now(timezone(timedelta(hours=-5), 'EST'))
-    cuttof = [(today - timedelta(2+((number_days-1)-i))).strftime("%Y-%m-%d") for i in range(number_days) ]
+def cuttof_maker(periods = 15, intra_period_lenght = 1):
+
+    last_cutoff_date = datetime.now(timezone(timedelta(hours=-5), 'EST')) - timedelta(intra_period_lenght+1)
+    cuttof = [(last_cutoff_date - timedelta(intra_period_lenght*((periods-1)-i) )).strftime("%Y-%m-%d") for i in range(periods) ]
 
     return cuttof
 
 # COMMAND ----------
 
-def prophet_tunning(df):    
+def prophet_tunning(df, periods = 15, intra_period_lenght = 1):    
     #    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
     #    'holidays_prior_scale': [0.01, 0.1, 1.0, 10.0],
     #, seasonality_prior_scale = params['seasonality_prior_scale'], holidays_prior_scale = params['holidays_prior_scale'] 
     df = df.copy()
     estacion_scores_rmse = []
-    cutoffs = pd.to_datetime(cuttof_maker())
+    cutoffs = pd.to_datetime(cuttof_maker(periods = periods, intra_period_lenght = intra_period_lenght))
     for idcomercializacion in df['IdComercializacion'].unique():
 
         try: 
@@ -68,7 +69,7 @@ def prophet_tunning(df):
             # Use cross validation to evaluate all parameters
             for params in all_params:
                 mp = Prophet(changepoint_prior_scale = params['changepoint_prior_scale'], holidays = holidays).fit(prophetdf)  # Fit model with given params
-                df_cv = cross_validation(mp, cutoffs=cutoffs, horizon='1 days', parallel="processes")
+                df_cv = cross_validation(mp, cutoffs=cutoffs, horizon=f'{intra_period_lenght} days', parallel="processes")
                 df_p2 = performance_metrics(df_cv, rolling_window=1)
                 df_cv['percentual_error'] = np.abs( df_cv['yhat'] - df_cv['y']  )/df_cv['y']
                 df_cv['Flag'] = np.where( df_cv['percentual_error'] < 0.1, 1, 0  ) 
@@ -135,7 +136,7 @@ insumo_pd_activa = insumo_pd[insumo_pd['Estado'] == 'ACTIVA'].reset_index(drop=T
 
 # COMMAND ----------
 
-resultado_prophet = prophet_tunning(insumo_pd_activa)
+resultado_prophet = prophet_tunning(df = insumo_pd_activa, periods = 15, intra_period_lenght = 1)
 
 # COMMAND ----------
 
