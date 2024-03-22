@@ -253,8 +253,16 @@ def media_forecast(df, media_parameters, n=4):
 
 insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF() 
 
-estaciones_mal_portadas = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
-    .filter( (col("Metric2") < 0.4) & (col("is_current") == 1) ).selectExpr( 'IdComercializacion' )
+estaciones_mal_portadas_1 = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter_06').toDF() \
+    .filter( (col("Metric2") < 0.6) & (col("is_current") == 1) ).selectExpr( 'IdComercializacion' )
+
+estaciones_mal_portadas_2_ = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter_06').toDF() \
+    .filter( (col("Metric2") >= 0.6) & (col("is_current") == 1) ).selectExpr( 'IdComercializacion' )
+
+estaciones_mal_portadas_2 = estaciones_mal_portadas_2_.alias("em") \
+     .join( DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF().alias("pp"), ( col("em.IdComercializacion") == col("pp.IdComercializacion") ) & (col("pp.is_current") == lit(True)), "left" ).filter( col("pp.Metric2") < 0.4 ).selectExpr( 'em.IdComercializacion' )
+
+estaciones_mal_portadas = estaciones_mal_portadas_1.union(estaciones_mal_portadas_2)
 estaciones_mal_portadas_pd = estaciones_mal_portadas.toPandas()
 
 

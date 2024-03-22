@@ -130,13 +130,31 @@ def prophet_tunning(df, periods = 15, intra_period_lenght = 1):
 
 # COMMAND ----------
 
+# MAGIC %sql 
+# MAGIC CREATE TABLE IF NOT EXISTS analiticagdc.comercializacion.prophettunningparameter_06 (
+# MAGIC   IdComercializacion       int,
+# MAGIC   RMSE                     float,
+# MAGIC   Metric                   float,
+# MAGIC   Metric1                  float,
+# MAGIC   Metric2                  float,
+# MAGIC   Changepoint_prior_scale  float,
+# MAGIC   FechaRegistro            date,
+# MAGIC   is_current               boolean
+# MAGIC )
+
+# COMMAND ----------
+
 insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF()
 insumo_pd = insumo.toPandas()
 insumo_pd_activa = insumo_pd[insumo_pd['Estado'] == 'ACTIVA'].reset_index(drop=True)
 
 # COMMAND ----------
 
-resultado_prophet = prophet_tunning(df = insumo_pd_activa, periods = 15, intra_period_lenght = 1)
+resultado_prophet_04 = prophet_tunning(df = insumo_pd_activa, periods = 30, intra_period_lenght = 1)
+
+# COMMAND ----------
+
+resultado_prophet_06 = prophet_tunning(df = insumo_pd_activa, periods = 60, intra_period_lenght = 1)
 
 # COMMAND ----------
 
@@ -155,11 +173,20 @@ schema = StructType([
     StructField("changepoint_prior_scale", FloatType(), True),
     ])
 
-resultado_prophet_sdf = spark.createDataFrame(resultado_prophet, schema = schema)
+resultado_prophet_sdf_04 = spark.createDataFrame(resultado_prophet_04, schema = schema)
+resultado_prophet_sdf_06 = spark.createDataFrame(resultado_prophet_06, schema = schema)
 
 # COMMAND ----------
 
-prophet_tunning_parameters = resultado_prophet_sdf \
+prophet_tunning_parameters_04 = resultado_prophet_sdf_04 \
+    .selectExpr( 'estacion as IdComercializacion',
+                 'rmse as RMSE',
+                 'metric as Metric',
+                 'metric_1 as Metric1',
+                 'metric_2 as Metric2',
+                 'changepoint_prior_scale as Changepoint_prior_scale' )
+    
+prophet_tunning_parameters_06 = resultado_prophet_sdf_06 \
     .selectExpr( 'estacion as IdComercializacion',
                  'rmse as RMSE',
                  'metric as Metric',
@@ -174,6 +201,11 @@ prophet_tunning = DeltaTable.forName(spark, 'analiticagdc.comercializacion.proph
     .withColumn('is_current', lit(False)) \
 
 prophet_tunning.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.prophettunningparameter")
+
+prophet_tunning_06 = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter_06').toDF().drop('is_current') \
+    .withColumn('is_current', lit(False)) \
+
+prophet_tunning_06.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.prophettunningparameter_06")
 
 
 # COMMAND ----------
@@ -194,6 +226,28 @@ insertar =  {
 
 
 deltaTable_prophettunningparameter.alias('t') \
-  .merge( prophet_tunning_parameters.alias('df'), 'False') \
+  .merge( prophet_tunning_parameters_04.alias('df'), 'False') \
+  .whenNotMatchedInsert(values=insertar) \
+  .execute()
+
+# COMMAND ----------
+
+deltaTable_prophettunningparameter_06 = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter_06')
+
+insertar =  {
+              "IdComercializacion"       : "df.IdComercializacion",
+              "RMSE"                     : "df.RMSE",
+              "Metric"                   : "df.Metric",
+              "Metric1"                  : "df.Metric1",
+              "Metric2"                  : "df.Metric2",
+              "Changepoint_prior_scale"  : "df.Changepoint_prior_scale",
+              "FechaRegistro"            : from_utc_timestamp(current_timestamp(), 'GMT-5'),
+              "is_current"               : lit(True)
+    }
+
+
+
+deltaTable_prophettunningparameter_06.alias('t') \
+  .merge( prophet_tunning_parameters_06.alias('df'), 'False') \
   .whenNotMatchedInsert(values=insertar) \
   .execute()

@@ -64,7 +64,7 @@ def completar_fechas(df):
 
 # COMMAND ----------
 
-def criterio_estado(df, ventana=30):
+def criterio_estado(df, ventana=30, new_until=60):
     
     hoy =  date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
     hace_n_dias =  date_sub(hoy, ventana-1)
@@ -72,7 +72,7 @@ def criterio_estado(df, ventana=30):
     estaciones_fechas = df
 
     estado_estaciones_ = estaciones_fechas.alias("v") \
-     .groupBy("IdComercializacion", "Estacion", "TipoUsuario") \
+     .groupBy("IdComercializacion", "Estacion", "TipoUsuario", "PrimeraFechaEfectiva") \
      .agg(
       min( col("v.Fecha") ).alias("PrimeraFecha"),
       min( when( (estaciones_fechas.Volumen != 0) & (estaciones_fechas.Fecha >= lit(hace_n_dias)), estaciones_fechas.Fecha ).otherwise( lit( date_add(hoy, 1) ) ) ).alias("PrimeraFechaConTrasmision"),
@@ -81,7 +81,7 @@ def criterio_estado(df, ventana=30):
     .withColumn( 'DiasCompletacionVentana2', lit(ventana) - col("DiasSeguidosSinTrasmision") ) \
     .withColumn( 'PorcentajeConsumoV', (lit(ventana) - col("DiasSinTrasmisionV"))/lit(ventana) ) \
     .withColumn( 'Hoy',  lit(hoy) ) \
-    .withColumn( 'Hace_30', lit(hace_n_dias) ) \
+    .withColumn( 'Hace_n', lit(hace_n_dias) ) \
     .withColumn( 'FechaInicialVentana2', when( (col("DiasCompletacionVentana2") > 0) & (col("DiasCompletacionVentana2") < 
                 lit(ventana)), date_sub( lit(hace_n_dias), col("DiasCompletacionVentana2") ) ).otherwise(lit(None)) ) \
     .withColumn( 'DST_estaciones_recien_aparecidas', when( col("PrimeraFecha") > col("FechaInicialVentana2"), lit 
@@ -100,9 +100,10 @@ def criterio_estado(df, ventana=30):
         .selectExpr( "ee.*", "DiasSinTrasmisionV2" ) \
         .withColumn( 'Estado', when( (col("DiasSinTrasmisionV2").isNull()) & (col("DiasSeguidosSinTrasmision") >= lit 
                          (ventana)) , lit("NO ACTIVA") )
-                         .when( (col("DiasSinTrasmisionV2").isNull()) & (col("DiasSeguidosSinTrasmision") < lit(ventana)) , lit("ACTIVA") )
-                         .when( col("DiasSinTrasmisionV2") < lit(ventana) , lit("ACTIVA") ) 
-                         .when( col("DiasSinTrasmisionV2") == lit(ventana) , lit("NUEVA") ) )
+                         .when( (col("DiasSinTrasmisionV2").isNull()) & (col("DiasSeguidosSinTrasmision") < lit(ventana))
+                               & ( date_diff( col("Hoy"), col("PrimeraFechaEfectiva") ) > lit(new_until) ), lit("ACTIVA") )
+                         .when( ( col("DiasSinTrasmisionV2") < lit(ventana)  ) & ( date_diff( col("Hoy"), col("PrimeraFechaEfectiva") ) > lit(new_until) ), lit("ACTIVA") ) 
+                         .when( ( col("DiasSinTrasmisionV2") == lit(ventana) ) | ( date_diff( col("Hoy"), col("PrimeraFechaEfectiva") ) <= lit(new_until) ) , lit("NUEVA") ) )
     
                             
     return estado_estaciones
@@ -123,7 +124,7 @@ def primera_fecha_efectiva(df, n=30):
     df_ = df.withColumn("zero_sum", sum(col("Volumen")).over(window1))
     
     # Fecha minima global, para complementar estaciones que no tengas oasis de inactividad
-    fecha_minima = df.groupBy( "IdComercializacion", "Estado", "Estacion", "TipoUsuario" ) \
+    fecha_minima = df.groupBy( "IdComercializacion", "Estacion", "TipoUsuario" ) \
     .agg( min(col("Fecha")).alias("FechaMinima") )
 
     # Encontrar el último valor de la última ventana de tamaño n con valores cero
@@ -137,7 +138,7 @@ def primera_fecha_efectiva(df, n=30):
     .join( ultima_ventana.alias("uv"), col("fm.IdComercializacion") == col("uv.IdComercializacion") , "left" ) \
     .withColumn( 'PrimeraFechaEfectiva', when( col("uv.Fecha").isNull(), col("fm.FechaMinima") )
                                         .otherwise(col("uv.Fecha")) ) \
-    .selectExpr( "fm.IdComercializacion", "fm.Estacion", "fm.TipoUsuario", "fm.Estado", "PrimeraFechaEfectiva" )
+    .selectExpr( "fm.IdComercializacion", "fm.Estacion", "fm.TipoUsuario", "PrimeraFechaEfectiva" )
 
     # Union de la primera fecha en el dataframe de insumo
     insumo = df.alias("d") \
@@ -251,14 +252,22 @@ dimestado = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado')
 # COMMAND ----------
 
 estaciones_fechas = completar_fechas(ingesta)
-estado_estaciones = criterio_estado(estaciones_fechas, ventana=30)
+estaciones_primera_fecha = primera_fecha_efectiva(estaciones_fechas, n=30)
+estado_estaciones = criterio_estado(estaciones_primera_fecha, ventana=30, new_until=60)
 
-insumo_sin_primeras_fechas = estaciones_fechas.alias("ef") \
+
+insumo_sin_filtro__ = estaciones_primera_fecha.alias("ef") \
 .join( estado_estaciones.alias("ee"), col("ee.IdComercializacion") == col("ef.IdComercializacion"), 'left' ) \
 .selectExpr( "ef.*", "ee.Estado" )
 
-insumo_sin_filtro_ = primera_fecha_efectiva(insumo_sin_primeras_fechas, n=30) \
-    .filter( col("Fecha") >= col("PrimeraFechaEfectiva") )
+estaciones_zerovolume_percentage = ingesta.withColumn('V', when(col("Volumen").isNull(), lit(0)).otherwise( col("Volumen") )).groupBy(col("IdComercializacion")).agg( ( sum( when( ~(col("V") == 0), lit(1) ).otherwise(lit(0)) )/count(col("V")) ).alias("Porcentaje") ).filter( col("Porcentaje") < 0.9 ).selectExpr( 'IdComercializacion' )
+
+
+insumo_sin_filtro_correcion_primerafecha = insumo_sin_filtro__.filter( (col("Fecha") >= col("PrimeraFechaEfectiva")) & (col("IdComercializacion").isin( estaciones_zerovolume_percentage.rdd.flatMap(lambda x: x).collect() ) ) )
+
+insumo_sin_filtro_no_correcion = insumo_sin_filtro__.filter( ~(col("IdComercializacion").isin( estaciones_zerovolume_percentage.rdd.flatMap(lambda x: x).collect() ) ) )
+
+insumo_sin_filtro_ = insumo_sin_filtro_correcion_primerafecha.union(insumo_sin_filtro_no_correcion)
 
 
 estaciones_1registro = insumo_sin_filtro_.groupBy(col("IdComercializacion")).agg( count(col("IdComercializacion")).alias("Cuenta") ).filter( col("Cuenta") == 1 ).selectExpr( 'IdComercializacion' )
@@ -290,10 +299,6 @@ estados = estado_estaciones.alias("ee") \
                          .when( (col("ee.Estado") != col("de.Estado")), lit("ACTUALIZAR") )  ) \
 .withColumn( 'is_current', lit(True) ) \
 .selectExpr( "ee.*", "Operacion", "de.Estado as ViejoEstado", "de.FechaRegistro", "is_current" )
-
-# COMMAND ----------
-
-display(estados.filter( col("IdComercializacion") == 471 ))
 
 # COMMAND ----------
 
