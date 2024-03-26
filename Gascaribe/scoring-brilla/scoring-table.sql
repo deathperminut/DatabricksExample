@@ -32,7 +32,3 @@ CREATE TABLE scoringFNB CLONE delta.`abfss://gold@gdcbidatalake.dfs.core.windows
 
 SELECT *
 FROM analiticagdc.brilla.scoringFNB
-
--- COMMAND ----------
-
-
