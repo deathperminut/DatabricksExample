@@ -13,7 +13,7 @@ database = dbutils.secrets.get(scope='gascaribe', key='com-database')
 # COMMAND ----------
 
 results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.factvolumen').toDF()\
-    .select(col("idcomercializacion").alias("id"), col("volumen").alias("volumen_real"),col("fecha")).filter(col("volumen").isNotNull())
+    .select(col("idcomercializacion").alias("id"), col("volumen").alias("volumen_real"),col("fecha"))
 
 # COMMAND ----------
 
