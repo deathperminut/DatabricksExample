@@ -1,6 +1,6 @@
 # Databricks notebook source
 from delta.tables import *
-from pyspark.sql.functions import asc, desc
+from pyspark.sql.functions import asc, desc, col
 
 # COMMAND ----------
 
@@ -13,7 +13,7 @@ database = dbutils.secrets.get(scope='gascaribe', key='com-database')
 # COMMAND ----------
 
 results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.factvolumen').toDF()\
-    .select("idcomercializacion", "fecha", "volumen")
+    .select(col("idcomercializacion").alias("id"), col("volumen").alias("volumen_real"),col("fecha")).filter(col("volumen").isNotNull())
 
 # COMMAND ----------
 
@@ -27,7 +27,7 @@ properties = {
 
 # COMMAND ----------
 
-results.write.jdbc(
+results.write.option("truncate", "true").jdbc(
     url, 
     table="public.volumenes_bi", 
     mode="overwrite", 
