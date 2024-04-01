@@ -1,6 +1,7 @@
 # Databricks notebook source
 from delta.tables import *
 from pyspark.sql.functions import asc, desc, col
+from pyspark.sql.functions import current_timestamp, date_sub
 
 # COMMAND ----------
 
@@ -13,7 +14,9 @@ database = dbutils.secrets.get(scope='gascaribe', key='com-database')
 # COMMAND ----------
 
 results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.factvolumen').toDF()\
-    .select(col("idcomercializacion").alias("id"), col("volumen").alias("volumen_real"),col("fecha"))
+    .select(col("idcomercializacion").alias("id"), col("volumen").alias("volumen_real"),col("fecha"))\
+    .filter(col("fecha") >= date_sub(current_timestamp(), 180))\
+    .filter(col("fecha") >= "2024-01-01")
 
 # COMMAND ----------
 
