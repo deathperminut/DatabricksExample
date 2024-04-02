@@ -17,7 +17,7 @@ import org.apache.spark.sql.expressions.Window
 
 /*Rangos de fechas de interés para consumos*/
 
-val inicio = lit("2024-01-01").cast("date")
+val inicio = lit("2021-01-01").cast("date")
 val fin = (current_timestamp()-expr("INTERVAL 29 HOURS")).cast("date")
 
 val fechas = DeltaTable.forName("bigdc.comun.dimfecha").toDF
