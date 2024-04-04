@@ -14,8 +14,8 @@ from pyspark.sql.functions import *
 def preprocess_inputs(df):
 
     df = df.copy()
-    df = df[~df['Identificacion'].isna() & df['Categoria']==1]
-    df = df.rename(columns={'SubCategoria':'Estrato'})
+    df = df[~df['Identificacion'].isna() & df['IdCategoria']==1]
+    df = df.rename(columns={'IdSubCategoria':'Estrato'})
  
     return df
 
@@ -206,15 +206,11 @@ def cupos(df):
 
 # COMMAND ----------
 
-storageCS = dbutils.secrets.get(scope='gascaribe', key='ba-storage-cs')
+fnbDF = spark.read.table("analiticagdc.brilla.insumosscoring").toPandas()
 
-fnbDF = pd.read_csv(
-                        f"abfs://brilla-scoring/rawdata.csv",
-                        storage_options={
-                                "connection_string":storageCS
-                                },
-                        encoding='utf8'
-                        )
+# COMMAND ----------
+
+storageCS = dbutils.secrets.get(scope='gascaribe', key='ba-storage-cs')
 
 # COMMAND ----------
 
@@ -260,7 +256,7 @@ schema = StructType([
     StructField("Tipo", StringType(), True),
     StructField("Nodo", IntegerType(), True),
     StructField("Riesgo", StringType(), True),
-    StructField("Categoria", IntegerType(), True),
+    StructField("IdCategoria", IntegerType(), True),
     StructField("Estrato", IntegerType(), True),
     StructField("FechaPrediccion", DateType(), True)
     ])
@@ -268,7 +264,7 @@ schema = StructType([
 today = datetime.now()
 today_dt = today.strftime("%Y-%m-%d")
 
-fnbDF = fnbDF[['Contrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'Categoria','Estrato']]
+fnbDF = fnbDF[['IdContrato','Nuevo Cupo','Identificacion','TipoIdentificacion','Nodo Combinado','Riesgo Combinado', 'IdCategoria','Estrato']]
 fnbDF['FechaPrediccion'] = today_dt
 fnbDF['FechaPrediccion'] = pd.to_datetime(fnbDF['FechaPrediccion'])
 
@@ -291,7 +287,7 @@ deltaTableScoring.alias('scoring') \
       "Tipo": "updates.Tipo",
       "Nodo": "updates.Nodo",
       "Riesgo": "updates.Riesgo",
-      "Categoria": "updates.Categoria",
+      "Categoria": "updates.IdCategoria",
       "Estrato": "updates.Estrato",
       "FechaPrediccion": "updates.FechaPrediccion"
     }
@@ -304,7 +300,7 @@ deltaTableScoring.alias('scoring') \
       "Tipo": "updates.Tipo",
       "Nodo": "updates.Nodo",
       "Riesgo": "updates.Riesgo",
-      "Categoria": "updates.Categoria",
+      "Categoria": "updates.IdCategoria",
       "Estrato": "updates.Estrato",
       "FechaPrediccion": "updates.FechaPrediccion"
     }
