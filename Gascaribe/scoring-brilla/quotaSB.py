@@ -2,19 +2,15 @@
 import delta.tables
 from delta.tables import *
 from pyspark.sql.functions import asc, desc
-from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number
 from pyspark.sql.functions import col
 from pyspark.sql.functions import current_timestamp
 
 # COMMAND ----------
 
-windowSpec  = Window.partitionBy("IdContrato").orderBy(desc("FechaPrediccion"))
-
 results = DeltaTable.forName(spark, 'analiticagdc.brilla.quotaSB')\
     .toDF()\
-    .withColumn("row_number", row_number().over(windowSpec))\
-    .filter(col("row_number") == 1)\
+    .dropDuplicates(["IdContrato"])\
     .select("IdContrato", "CupoAsignado", "Nodo", "Riesgo")\
     .withColumn("created_at", current_timestamp())\
     .withColumn("updated_at", current_timestamp())\
