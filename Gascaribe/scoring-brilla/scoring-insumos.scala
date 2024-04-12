@@ -31,7 +31,18 @@
 import io.delta.tables._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.SparkSession
-val FactResumenCierreDia = DeltaTable.forName("bigdc.Cartera.FactResumenCierreDia").toDF
+
+val localidadesdrop = DeltaTable.forName("bigdc.comun.dimgeografia").toDF.filter($"IdGeografia".isin(143, 157, 182, 32, 30)).select("IdGeografia")
+
+val FactResumenCierreDia = DeltaTable.forName("bigdc.Cartera.FactResumenCierreDia").toDF.alias("rc")
+  .join(
+    localidadesdrop.alias("ld"),
+    $"rc.IdBarrio" === $"ld.IdGeografia",
+    "left"
+  )
+  .filter(
+    $"IdGeografia".isNull
+  )
 val DimDiferido = DeltaTable.forName("bigdc.Cartera.DimDiferido").toDF
 val DimProducto = DeltaTable.forName("bigdc.Comun.DimProducto").toDF
 val FactCargo = DeltaTable.forName("bigdc.Facturacion.FactCargo").toDF
