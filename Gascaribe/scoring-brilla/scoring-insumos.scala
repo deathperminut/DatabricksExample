@@ -1,4 +1,9 @@
 // Databricks notebook source
+import io.delta.tables._
+import org.apache.spark.sql.functions._
+
+// COMMAND ----------
+
 // MAGIC %sql
 // MAGIC CREATE TABLE IF NOT EXISTS analiticagdc.brilla.insumosscoring(
 // MAGIC   TipoIdentificacion     varchar(100),
@@ -28,11 +33,7 @@
 
 // COMMAND ----------
 
-import io.delta.tables._
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.SparkSession
-
-val localidadesdrop = DeltaTable.forName("bigdc.comun.dimgeografia").toDF.filter($"IdGeografia".isin(143, 157, 182, 32, 30)).select("IdGeografia")
+val localidadesdrop = DeltaTable.forName("bigdc.comun.dimgeografia").toDF.filter($"IdGeografiaPadre".isin(143, 157, 182, 32, 30)).select("IdGeografia")
 
 val FactResumenCierreDia = DeltaTable.forName("bigdc.Cartera.FactResumenCierreDia").toDF.alias("rc")
   .join(
