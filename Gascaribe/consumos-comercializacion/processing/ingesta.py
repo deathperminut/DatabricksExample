@@ -39,23 +39,8 @@ ingesta = volumenes.alias("v") \
              "tipo_usuario as TipoUsuario",
              "id_electrocorrector as IdDispositivo",
              "Fecha",
-             "Volumen")
+             "CAST(Volumen AS FLOAT) AS Volumen")
 
 # COMMAND ----------
 
-deltaTable_ingesta = DeltaTable.forName(spark, 'analiticagdc.comercializacion.ingesta')
-
-mapping =  {
-              "IdComercializacion"  : "df.IdComercializacion",
-              "Estacion"            : "df.Estacion",
-              "TipoUsuario"         : "df.TipoUsuario",
-              "IdDispositivo"       : "df.IdDispositivo",
-              "Fecha"               : "df.Fecha",
-              "Volumen"             : "df.Volumen"
-    }
-
-deltaTable_ingesta.alias('t') \
-  .merge( ingesta.alias('df'), 't.IdComercializacion = df.IdComercializacion AND t.Fecha = df.Fecha') \
-  .whenMatchedUpdate(set=mapping) \
-  .whenNotMatchedInsert(values=mapping) \
-  .execute()
+ingesta.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.ingesta")

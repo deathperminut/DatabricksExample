@@ -56,7 +56,10 @@ estaciones_mal_portadas = estaciones_mal_portadas_1.union(estaciones_mal_portada
 fechas_tuneo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
 .selectExpr( 'FechaRegistro' ).dropDuplicates().orderBy(desc(col('FechaRegistro')))
 fecha_ultimo_tuneo_prophet = fechas_tuneo.collect()[0][0] 
-fecha_penultimo_tuneo_prophet = fechas_tuneo.collect()[1][0] 
+try:
+    fecha_penultimo_tuneo_prophet = fechas_tuneo.collect()[1][0]
+except Exception as e:
+    fecha_penultimo_tuneo_prophet = to_date(lit("1900-01-01")) 
 
 estaciones_nuevas_hasta_ultima_tunning_prophet = DeltaTable.forName(spark, 'analiticagdc.comercializacion.dimestado').toDF() \
     .filter( ( (col("Estado") == 'NUEVA') & (col("is_current") == lit(True)) ) 
@@ -87,7 +90,7 @@ results =  predictions.alias("p") \
                  'p.Fecha',
                  'rv.Volumen',
                  'p.Prediccion',
-                 'Error'  ).filter( col('Fecha') > fecha_ultimo_tuneo_prophet )
+                 'Error'  ).filter( (col('Fecha') >= fecha_ultimo_tuneo_prophet) )
 
 
 # COMMAND ----------

@@ -28,7 +28,7 @@ warnings.filterwarnings('ignore')
 
 def completar_fechas(df):
     
-    hoy = date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
+    hoy =  date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
     
     estaciones = df.groupBy("IdComercializacion", "Estacion", "TipoUsuario").agg( min("Fecha").alias("FechaMimima") )
 
@@ -112,7 +112,7 @@ def criterio_estado(df, ventana=30, new_until=60):
 
 def primera_fecha_efectiva(df, n=30):
    
-    hoy =  date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
+    hoy = date_sub(to_date( from_utc_timestamp(current_timestamp(), 'GMT-5') ), 1)
     
     # Creación de ventanas
     # Ventana para calcular las ventanas de inactividad

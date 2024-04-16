@@ -28,28 +28,45 @@ warnings.filterwarnings('ignore')
 
 def cuttof_maker(periods = 15, intra_period_lenght = 1):
 
-    last_cutoff_date = datetime.now(timezone(timedelta(hours=-5), 'EST')) - timedelta(intra_period_lenght+1)
+    last_cutoff_date = datetime.now(timezone(timedelta(hours=-5), 'EST')) - timedelta(intra_period_lenght+1) 
     cuttof = [(last_cutoff_date - timedelta(intra_period_lenght*((periods-1)-i) )).strftime("%Y-%m-%d") for i in range(periods) ]
 
     return cuttof
 
 # COMMAND ----------
 
-def prophet_tunning(df, periods = 15, intra_period_lenght = 1):    
-    #    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
-    #    'holidays_prior_scale': [0.01, 0.1, 1.0, 10.0],
-    #, seasonality_prior_scale = params['seasonality_prior_scale'], holidays_prior_scale = params['holidays_prior_scale'] 
-    df = df.copy()
-    estacion_scores_rmse = []
-    cutoffs = pd.to_datetime(cuttof_maker(periods = periods, intra_period_lenght = intra_period_lenght))
-    for idcomercializacion in df['IdComercializacion'].unique():
+def prophet_tunning(periods = 30, intra_period_lenght = 1):
+
+    schema = StructType([
+    StructField("estacion", IntegerType(), True),
+    StructField("modelo", StringType(), True),
+    StructField("rmse", FloatType(), True),
+    StructField("metric_1", FloatType(), True),
+    StructField("metric_2", FloatType(), True),
+    StructField("metric", FloatType(), True),
+    StructField("changepoint_prior_scale", FloatType(), True),
+    ])
+
+    @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
+    def prophet_tunning_(df):  
+
+        #periods = 60
+        #intra_period_lenght = 1
+
+        #    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
+        #    'holidays_prior_scale': [0.01, 0.1, 1.0, 10.0],
+        #, seasonality_prior_scale = params['seasonality_prior_scale'], holidays_prior_scale = params['holidays_prior_scale'] 
+        df = df.copy()
+        estacion_scores_rmse = []
+        cutoffs = pd.to_datetime(cuttof_maker(periods = periods, intra_period_lenght = intra_period_lenght))
+
 
         try: 
-            prophetdf = df[df['IdComercializacion'] == idcomercializacion].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'VolumenCorregido']]
+            prophetdf = df.reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'VolumenCorregido']]
             prophetdf.columns = ['ds', 'y']
             prophetdf['ds'] = pd.to_datetime(prophetdf['ds'])
 
-            holidays = df.loc[(df['IdComercializacion'] == idcomercializacion) & (df['Festivo'] == 1)].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'VolumenCorregido']]
+            holidays = df.loc[(df['Festivo'] == 1)].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'VolumenCorregido']]
             holidays['holiday'] = 'Festivo'
             holidays = holidays[['holiday', 'Fecha']]
             holidays.columns = ['holiday', 'ds']
@@ -65,11 +82,11 @@ def prophet_tunning(df, periods = 15, intra_period_lenght = 1):
             metric = []  # Store the metric1's (percentage of days with less than 0.05) for each params here
             metric_1 = []  # Store the metric1's (percentage of days with less than 0.1) for each params here
             metric_2 = []  # Store the metric2's (percentage of days with less than 0.15) for each params here
-
+            #print(df['Id'].iloc[0])
             # Use cross validation to evaluate all parameters
             for params in all_params:
                 mp = Prophet(changepoint_prior_scale = params['changepoint_prior_scale'], holidays = holidays).fit(prophetdf)  # Fit model with given params
-                df_cv = cross_validation(mp, cutoffs=cutoffs, horizon=f'{intra_period_lenght} days', parallel="processes")
+                df_cv = cross_validation(mp, cutoffs=cutoffs, horizon=f'{intra_period_lenght} days',parallel="processes")
                 df_p2 = performance_metrics(df_cv, rolling_window=1)
                 df_cv['percentual_error'] = np.abs( df_cv['yhat'] - df_cv['y']  )/df_cv['y']
                 df_cv['Flag'] = np.where( df_cv['percentual_error'] < 0.1, 1, 0  ) 
@@ -79,7 +96,7 @@ def prophet_tunning(df, periods = 15, intra_period_lenght = 1):
                 metric.append( np.sum(df_cv['Flag2'])/len(df_cv['Flag2']) )
                 metric_1.append( np.sum(df_cv['Flag'])/len(df_cv['Flag']) )
                 metric_2.append( np.sum(df_cv['Flag1'])/len(df_cv['Flag1']) )
-
+            #print(df['Id'].iloc[0])
             # Find the best parameters
             tuning_results = pd.DataFrame(all_params)
             tuning_results['rmse'] = rmses
@@ -88,25 +105,29 @@ def prophet_tunning(df, periods = 15, intra_period_lenght = 1):
             tuning_results['metric'] = metric
             best_params = tuning_results.iloc[np.argmin(rmses)]
             estacion_scores_rmse.append({
-                            'estacion': idcomercializacion,
+                            'estacion': df['Id'].iloc[0],
                             'modelo': 'Prophet Forecasting',
                             'rmse': best_params['rmse'],
                             'metric_1': best_params['metric_1'],
                             'metric_2': best_params['metric_2'],
                             'metric': best_params['metric'],
                             'changepoint_prior_scale': best_params['changepoint_prior_scale']})
-            #print('success')
+                #print('success')
         except Exception as e:
-                estacion_scores_rmse.append({
-                            'estacion': idcomercializacion,
-                            'modelo': 'Prophet Forecasting',
-                            'rmse': -1,
-                            'metric_1': -1,
-                            'metric_2': -1,
-                            'metric': -1,
-                            'changepoint_prior_scale': -1})
-        
-    return pd.DataFrame(estacion_scores_rmse)
+            estacion_scores_rmse.append({
+                        'estacion': df['Id'].iloc[0],
+                        'modelo': 'Prophet Forecasting',
+                        'rmse': -1,
+                        'metric_1': -1,
+                        'metric_2': -1,
+                        'metric': -1,
+                        'changepoint_prior_scale': -1})
+
+        return pd.DataFrame(estacion_scores_rmse)
+    
+    return prophet_tunning_
+
+
 
 
 # COMMAND ----------
@@ -144,17 +165,38 @@ def prophet_tunning(df, periods = 15, intra_period_lenght = 1):
 
 # COMMAND ----------
 
-insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF()
-insumo_pd = insumo.toPandas()
-insumo_pd_activa = insumo_pd[insumo_pd['Estado'] == 'ACTIVA'].reset_index(drop=True)
+insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF().filter( col("Estado") == lit('ACTIVA') ) \
+    .withColumn('Id', col("IdComercializacion") ) \
+    .selectExpr( "Fecha",
+                 "IdComercializacion",
+                 "Id",
+                 "Estacion",
+                 "Festivo",
+                 "VolumenCorregido" )
 
 # COMMAND ----------
 
-resultado_prophet_04 = prophet_tunning(df = insumo_pd_activa, periods = 30, intra_period_lenght = 1)
+# Partition the data
+insumo.createOrReplaceTempView("insumo_pd")
+sql = "select * from insumo_pd"
+insumo_partition = (spark.sql(sql)\
+   .repartition(spark.sparkContext.defaultParallelism, 
+   ['IdComercializacion'])).cache()
+insumo_partition.explain()
 
 # COMMAND ----------
 
-resultado_prophet_06 = prophet_tunning(df = insumo_pd_activa, periods = 60, intra_period_lenght = 1)
+import logging
+logger = logging.getLogger('cmdstanpy')
+logger.addHandler(logging.NullHandler())
+logger.propagate = False
+logger.setLevel(logging.CRITICAL)
+
+prophet_tunning_04 = prophet_tunning(periods = 30, intra_period_lenght = 1)
+prophet_tunning_06 = prophet_tunning(periods = 60, intra_period_lenght = 1)
+
+resultado_04 = insumo_partition.groupby(['IdComercializacion']).apply(prophet_tunning_04)
+resultado_06 = insumo_partition.groupby(['IdComercializacion']).apply(prophet_tunning_06)
 
 # COMMAND ----------
 
@@ -163,30 +205,17 @@ resultado_prophet_06 = prophet_tunning(df = insumo_pd_activa, periods = 60, intr
 
 # COMMAND ----------
 
-schema = StructType([
-    StructField("estacion", IntegerType(), True),
-    StructField("modelo", StringType(), True),
-    StructField("rmse", FloatType(), True),
-    StructField("metric_1", FloatType(), True),
-    StructField("metric_2", FloatType(), True),
-    StructField("metric", FloatType(), True),
-    StructField("changepoint_prior_scale", FloatType(), True),
-    ])
-
-resultado_prophet_sdf_04 = spark.createDataFrame(resultado_prophet_04, schema = schema)
-resultado_prophet_sdf_06 = spark.createDataFrame(resultado_prophet_06, schema = schema)
-
-# COMMAND ----------
-
-prophet_tunning_parameters_04 = resultado_prophet_sdf_04 \
+prophet_tunning_parameters_04 = resultado_04 \
     .selectExpr( 'estacion as IdComercializacion',
                  'rmse as RMSE',
                  'metric as Metric',
                  'metric_1 as Metric1',
                  'metric_2 as Metric2',
                  'changepoint_prior_scale as Changepoint_prior_scale' )
-    
-prophet_tunning_parameters_06 = resultado_prophet_sdf_06 \
+
+# COMMAND ----------
+
+prophet_tunning_parameters_06 = resultado_06 \
     .selectExpr( 'estacion as IdComercializacion',
                  'rmse as RMSE',
                  'metric as Metric',
