@@ -151,38 +151,55 @@ def primera_fecha_efectiva(df, n=30):
 
 # COMMAND ----------
 
-def prophet_filter_(df,n1=30,n2=15, n=4):
-    df = df.copy()
-    df['ds'] = df['Fecha']
-    df['y'] = df['Volumen']
-    new_df = pd.DataFrame()
+def prophet_filter(n1=30,n2=15):
 
-    class CustomIndexer(BaseIndexer):
-        def get_window_bounds(self, num_values, min_periods, center, closed, step):
-            start = np.empty(num_values, dtype=np.int64)
-            end = np.empty(num_values, dtype=np.int64)
-            for i in range(num_values):
-                #start[i] = i#
-                #end[i] = i+1#(((i//self.window_size)+1)*self.window_size)-1
+    schema = StructType([
+        StructField("Fecha", DateType(), True),
+        StructField("DiaSemana", IntegerType(), True),
+        StructField("Festivo", IntegerType(), True),
+        StructField("IdComercializacion", IntegerType(), True),
+        StructField("Estacion", StringType(), True),
+        StructField("TipoUsuario", StringType(), True),
+        StructField("Volumen", FloatType(), True),
+        StructField("VolumenCorregido", FloatType(), True),
+        StructField("deviation", FloatType(), True),
+        StructField("standar_deviation1", FloatType(), True),
+        StructField("standar_deviation2", FloatType(), True),
+        StructField("Estado", StringType(), True),
+        StructField("PrimeraFechaEfectiva", DateType(), True),
+        ])
 
-                start[i] = (i//(self.window_size))*(self.window_size)
-                end[i] = np.min( [(start[i] + self.window_size), num_values-1] )
 
-            return start, end
+    @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
+    def prophet_filter__(df):
+        df = df.copy()
+        df['ds'] = df['Fecha']
+        df['y'] = df['Volumen']
+
+        class CustomIndexer(BaseIndexer):
+            def get_window_bounds(self, num_values, min_periods, center, closed, step):
+                start = np.empty(num_values, dtype=np.int64)
+                end = np.empty(num_values, dtype=np.int64)
+                for i in range(num_values):
+                    #start[i] = i#
+                    #end[i] = i+1#(((i//self.window_size)+1)*self.window_size)-1
+
+                    start[i] = (i//(self.window_size))*(self.window_size)
+                    end[i] = np.min( [(start[i] + self.window_size), num_values-1] )
+
+                return start, end
+
+        def sd_my(x):
+            return np.sqrt( x.sum()/(len(x) - 1) )
+
+
         
-    def sd_my(x):
-        return np.sqrt( x.sum()/(len(x) - 1) )
-    
-    
-    for est in df['Estacion'].unique():
-
-        condition = np.where( (df['IdComercializacion'] == est) & (df['Festivo'] == 1) )
-        holidays = df.loc[condition].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'Volumen']]
-        holidays['holiday'] = 'Festivo'
+        holidays = df[df['Festivo'] == 1].reset_index(drop=True).sort_values(by='Fecha')[['Fecha', 'Volumen']]
+        holidays['holiday'] = 'Festivo_'
         holidays = holidays[['holiday', 'Fecha']]
         holidays.columns = ['holiday', 'ds']
         holidays['ds'] = pd.to_datetime(holidays['ds'])
-        _ = df[(df['Estacion'] == est)]
+        _ = df
         _['ds'] = pd.to_datetime(_['ds'])
         model = Prophet(changepoint_prior_scale = 0.5 , holidays = holidays)
         model.fit(_[['ds','y']])
@@ -198,27 +215,24 @@ def prophet_filter_(df,n1=30,n2=15, n=4):
         temporary_df['standar_deviation1'] = temporary_df['deviationsq'].rolling(indexer,  min_periods=1).apply(sd_my)
         temporary_df['standar_deviation2'] = temporary_df['deviationsq'].rolling(indexer2,  min_periods=1).apply(sd_my)
         temporary_df['outlier_flag'] = np.where( ( ( temporary_df['y'] > temporary_df['yhat_upper'] ) | ( temporary_df['y'] < temporary_df['yhat_lower'] ) ) & ( (1.5*temporary_df['standar_deviation1']) < (np.abs(temporary_df['deviation']))  ) & ( (1.5*temporary_df['standar_deviation2']) < (np.abs(temporary_df['deviation'])) ), True , False )
-        
-        temporary_df['y_corregido'] = None
+
+        temporary_df['VolumenCorregido'] = None
 
         for i in range(len(temporary_df)):
             if temporary_df['outlier_flag'][i]:
                 if temporary_df['trend'][i] >= 0:
-                    temporary_df['y_corregido'][i] = temporary_df['trend'][i] 
+                    temporary_df['VolumenCorregido'][i] = temporary_df['trend'][i] 
                 else: 
-                    temporary_df['y_corregido'][i] = 0
+                    temporary_df['VolumenCorregido'][i] = 0
 
             else:
-                temporary_df['y_corregido'][i] = temporary_df['y'][i]
+                temporary_df['VolumenCorregido'][i] = temporary_df['y'][i]
 
-        
-        
-
-        new_df = pd.concat([temporary_df,new_df],axis=0)
-
-
+        result = temporary_df[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'VolumenCorregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
     
-    return new_df
+        return result 
+    
+    return prophet_filter__
 
 # COMMAND ----------
 
@@ -278,18 +292,27 @@ insumo_estacion_1registro = insumo_sin_filtro_.filter( ( col("IdComercializacion
 
 # COMMAND ----------
 
-df_pd = insumo_sin_filtro.toPandas()
-df_1registro = insumo_estacion_1registro.toPandas()
-insumo_filtro_ = prophet_filter_(df_pd)
-df_1registro['y_corregido'] = df_1registro['Volumen']
-df_1registro['deviation'] = 0
-df_1registro['standar_deviation1'] = 0
-df_1registro['standar_deviation2'] = 0
+insumo_sin_filtro2 = insumo_sin_filtro
+# Partition the data
+insumo_sin_filtro2.createOrReplaceTempView("insumo_sf")
+sql = "select * from insumo_sf"
+insumo_sin_filtro_partition = (spark.sql(sql)\
+   .repartition(spark.sparkContext.defaultParallelism, 
+   ['IdComercializacion'])).cache()
+insumo_sin_filtro_partition.explain()
 
-df_1registro = df_1registro[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
-insumo_filtro_ = insumo_filtro_[['Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'y_corregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva']]
+# COMMAND ----------
 
-insumo_filtro = pd.concat([insumo_filtro_,df_1registro],axis=0)
+prophet_filter_30_15 = prophet_filter(n1=30,n2=15)
+insumo_filtro_ = insumo_sin_filtro_partition.groupby(['IdComercializacion']).apply(prophet_filter_30_15)
+
+insumo_filtro_1registro = insumo_estacion_1registro.withColumn('VolumenCorregido', col("Volumen") ) \
+                .withColumn('deviation', lit(0)) \
+                .withColumn('standar_deviation1', lit(0)) \
+                .withColumn('standar_deviation2', lit(0)) \
+                .selectExpr( 'Fecha', 'DiaSemana', 'Festivo', 'IdComercializacion', 'Estacion', 'TipoUsuario', 'Volumen', 'VolumenCorregido', 'deviation', 'standar_deviation1', 'standar_deviation2', 'Estado', 'PrimeraFechaEfectiva' )
+
+insumo_filtro = insumo_filtro_.union(insumo_filtro_1registro)
 
 # COMMAND ----------
 
@@ -307,25 +330,7 @@ estados = estado_estaciones.alias("ee") \
 
 # COMMAND ----------
 
-schema = StructType([
-    StructField("Fecha", DateType(), True),
-    StructField("DiaSemana", IntegerType(), True),
-    StructField("Festivo", IntegerType(), True),
-    StructField("IdComercializacion", IntegerType(), True),
-    StructField("Estacion", StringType(), True),
-    StructField("TipoUsuario", StringType(), True),
-    StructField("Volumen", FloatType(), True),
-    StructField("VolumenCorregido", FloatType(), True),
-    StructField("deviation", FloatType(), True),
-    StructField("standar_deviation1", FloatType(), True),
-    StructField("standar_deviation2", FloatType(), True),
-    StructField("Estado", StringType(), True),
-    StructField("PrimeraFechaEfectiva", DateType(), True),
-    ])
-
-insumo_filtro_sdf = spark.createDataFrame(insumo_filtro, schema = schema)
-
-insumo_filtro_sdf.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.insumo")
+insumo_filtro.write.mode("overwrite").saveAsTable("analiticagdc.comercializacion.insumo")
 
 # COMMAND ----------
 
