@@ -25,6 +25,7 @@ spark.conf.set(config_key, blob_access_key)
 query = """
     SELECT *
     FROM Comercializacion.FactConsumos
+    WHERE FactConsumos.Fecha >= '2024-01-01'
     """
 
 deltaDF = spark.read \
