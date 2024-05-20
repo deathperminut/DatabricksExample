@@ -13,8 +13,10 @@ database = dbutils.secrets.get(scope='gascaribe', key='com-database')
 
 # COMMAND ----------
 
-results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.forecastresults').toDF()\
-    .select(col("IdComercializacion").alias("id"), col("Prediccion").alias("volumen_proyectado"),col("Fecha").alias("fecha")) \
+estaciones = DeltaTable.forName(spark, 'production.comercializacion.estaciones').toDF()
+results = DeltaTable.forName(spark, 'analiticagdc.comercializacion.forecastresults').toDF().alias("fr")\
+    .join(estaciones.alias("e"), (col("e.id") == col("fr.IdComercializacion")) & (col("e.descripcion") == col("fr.Estacion")), "inner") \
+    .select(col("fr.IdComercializacion").alias("id"), col("fr.Prediccion").alias("volumen_proyectado"),col("fr.Fecha").alias("fecha")) \
     .filter(col("fecha") >= "2024-01-01")
 
 # COMMAND ----------
