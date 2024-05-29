@@ -61,14 +61,14 @@ def prophet_forecast(df):
         forecast['prediccion'] = np.where( forecast['yhat'] < 0, 0, forecast['yhat'] )
 
         prophet_forecast.append({
-                            'IdComercializacion': df['Id'].iloc[0],
+                            'IdComercializacion': df['IdComercializacion'].iloc[0],
                             'Modelo': 'Prophet',
                             'Fecha': forecast['ds'].iloc[-1],
                             'Prediccion': forecast['prediccion'].iloc[-1] })
     except Exception as e:
 
         prophet_forecast.append({
-                            'IdComercializacion': df['Id'].iloc[0],
+                            'IdComercializacion': df['IdComercializacion'].iloc[0],
                             'Modelo': 'Prophet',
                             'Fecha': datetime(1900, 1, 1),
                             'Prediccion': -1 })
@@ -92,8 +92,7 @@ def prophet_forecast(df):
 
 # COMMAND ----------
 
-insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF().filter( col("Estado") == lit('ACTIVA') ) \
-    .withColumn('Id', col("IdComercializacion") )
+insumo = DeltaTable.forName(spark, 'analiticagdc.comercializacion.insumo').toDF().filter( col("Estado") == lit('ACTIVA') ) 
 
 parametros = DeltaTable.forName(spark, 'analiticagdc.comercializacion.prophettunningparameter').toDF() \
     .filter( col("is_current") == lit(True))
@@ -102,7 +101,6 @@ insumo_parametros = insumo.alias("i") \
     .join( parametros.alias("p"), col("i.IdComercializacion") == col("p.IdComercializacion"), "left" ) \
     .selectExpr( "i.Fecha",
                  "i.IdComercializacion",
-                 "i.Id",
                  "i.Estacion",
                  "i.Festivo",
                  "i.VolumenCorregido",

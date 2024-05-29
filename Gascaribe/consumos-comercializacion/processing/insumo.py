@@ -151,6 +151,54 @@ def primera_fecha_efectiva(df, n=30):
 
 # COMMAND ----------
 
+from scipy.stats import chi2
+
+def metricas_relevantes(ventana=15):
+
+    schema = StructType([
+        StructField("IdComercializacion", IntegerType(), True),
+        StructField("PrimeraFechaEfectiva", DateType(), True),
+        StructField("Porcentaje", FloatType(), True),
+        StructField("NumeroCeros", IntegerType(), True),
+        StructField("NumeroTotal", IntegerType(), True),
+        StructField("VolumenPromedio", FloatType(), True),
+        StructField("VolumenDesviacion", FloatType(), True),
+        StructField("Uniformidad", FloatType(), True),
+        ])
+
+
+    @pandas_udf(schema, PandasUDFType.GROUPED_MAP)
+    def metricas_relevantes__(df):
+        df = df.copy()
+
+        df['Flag_0'] = np.where( df['Volumen'] == 0, 1, 0 )
+                
+        result_ = df.groupby( ['IdComercializacion', 'PrimeraFechaEfectiva'] ).agg( {'Flag_0':['sum', 'count'], 'Volumen':['mean', 'std']} ).reset_index()
+        result_['Porcentaje'] = 1 - ((result_['Flag_0']['sum'])/(result_['Flag_0']['count']))
+        result_['NumeroCeros'] = result_['Flag_0']['sum']
+        result_['NumeroTotal'] = result_['Flag_0']['count']
+        result_['VolumenPromedio'] = result_['Volumen']['mean']
+        result_['VolumenDesviacion'] = result_['Volumen']['std']
+
+        bondad_test_ = df.reset_index()
+        bondad_test_['NumeroVentana'] = bondad_test_['index']//ventana
+
+        bondad_test = bondad_test_.groupby( ['IdComercializacion', 'NumeroVentana'] ).agg( 'sum' ).reset_index()
+        bondad_test = bondad_test[['IdComercializacion', 'NumeroVentana', 'Flag_0']]
+        bondad_test['Esperado'] =  (result_['NumeroCeros'].iloc[0]/result_['NumeroTotal'].iloc[0])*ventana
+        bondad_test['Estadistico_i'] = ( (bondad_test['Esperado'] - bondad_test['Flag_0'])*(bondad_test['Esperado'] - bondad_test['Flag_0']) )/bondad_test['Esperado']
+   
+        result_['Uniformidad'] =  (1 - chi2.cdf(np.sum(bondad_test['Estadistico_i']), len(bondad_test['Esperado'])-1 )) 
+
+
+        result = result_[['IdComercializacion', 'PrimeraFechaEfectiva', 'Porcentaje', 'NumeroCeros', 'NumeroTotal', 'VolumenPromedio', 'VolumenDesviacion', 'Uniformidad']]
+    
+        return result 
+    
+    return metricas_relevantes__
+
+# COMMAND ----------
+
 def prophet_filter(n1=30,n2=15):
 
     schema = StructType([
@@ -269,19 +317,17 @@ estaciones_fechas = completar_fechas(ingesta)
 estaciones_primera_fecha = primera_fecha_efectiva(estaciones_fechas, n=30)
 estado_estaciones = criterio_estado(estaciones_primera_fecha, ventana=30, new_until=60)
 
+metricas_15 = metricas_relevantes(ventana=15)
+metricas = estaciones_primera_fecha.groupBy( col("IdComercializacion")).apply(metricas_15)
 
-insumo_sin_filtro__ = estaciones_primera_fecha.alias("ef") \
-.join( estado_estaciones.alias("ee"), col("ee.IdComercializacion") == col("ef.IdComercializacion"), 'left' ) \
-.selectExpr( "ef.*", "ee.Estado" )
+estaciones_filtro_primera_fecha = metricas.filter( ((col("Porcentaje") < 0.85) & (col("Uniformidad") < 0.05)) ).selectExpr( 'IdComercializacion' )
 
-estaciones_zerovolume_percentage = ingesta.withColumn('V', when(col("Volumen").isNull(), lit(0)).otherwise( col("Volumen") )).groupBy(col("IdComercializacion")).agg( ( sum( when( ~(col("V") == 0), lit(1) ).otherwise(lit(0)) )/count(col("V")) ).alias("Porcentaje") ).filter( col("Porcentaje") < 0.9 ).selectExpr( 'IdComercializacion' )
+insumo_sin_filtro_correcion_primerafecha = estaciones_primera_fecha.filter( (col("Fecha") >= col("PrimeraFechaEfectiva")) & (col("IdComercializacion").isin( estaciones_filtro_primera_fecha.rdd.flatMap(lambda x: x).collect() ) ) )
+insumo_sin_filtro_no_correcion = estaciones_primera_fecha.filter( ~(col("IdComercializacion").isin( estaciones_filtro_primera_fecha.rdd.flatMap(lambda x: x).collect() ) ) )
 
-
-insumo_sin_filtro_correcion_primerafecha = insumo_sin_filtro__.filter( (col("Fecha") >= col("PrimeraFechaEfectiva")) & (col("IdComercializacion").isin( estaciones_zerovolume_percentage.rdd.flatMap(lambda x: x).collect() ) ) )
-
-insumo_sin_filtro_no_correcion = insumo_sin_filtro__.filter( ~(col("IdComercializacion").isin( estaciones_zerovolume_percentage.rdd.flatMap(lambda x: x).collect() ) ) )
-
-insumo_sin_filtro_ = insumo_sin_filtro_correcion_primerafecha.union(insumo_sin_filtro_no_correcion)
+insumo_sin_filtro_ = insumo_sin_filtro_correcion_primerafecha.union(insumo_sin_filtro_no_correcion).alias("ef") \
+    .join( estado_estaciones.alias("ee"), col("ee.IdComercializacion") == col("ef.IdComercializacion"), 'left' ) \
+    .selectExpr( "ef.*", "ee.Estado" )
 
 
 estaciones_1registro = insumo_sin_filtro_.groupBy(col("IdComercializacion")).agg( count(col("IdComercializacion")).alias("Cuenta") ).filter( col("Cuenta") == 1 ).selectExpr( 'IdComercializacion' )
